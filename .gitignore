@@ -1,0 +1,21 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/launch.json
+!.vscode/settings.json
+
+# Logs / temp
+*.log
+*.tmp
+*.bak
+
+# Dependencies
+node_modules/
+paseguardia/functions/node_modules/
+
+# Firebase local cache
+paseguardia/.firebase/
+
+# Archives
+*.zip

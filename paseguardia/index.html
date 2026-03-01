@@ -1,0 +1,2119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Pase Guardia">
+<meta name="theme-color" content="#0a1628">
+<title>Pase de Guardia</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Epilogue:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<!-- Firebase config embedded directly in the module below -->
+
+<style>
+:root {
+  --bg:#0a1628;--bg2:#0f1e35;--surface:#132038;--surface2:#1a2d4a;
+  --border:#1e3553;--border2:#254165;
+  --accent:#3dd9b3;--accent2:#ff6b6b;--accent3:#ffc947;--accent4:#6c9bff;
+  --text:#eaf4ff;--text2:#7fa8cc;--text3:#3d6a8a;
+  --amnp:#a78bfa;--intern:#3dd9b3;--poli:#fb923c;
+  --r:12px;--r2:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Epilogue',sans-serif;background:var(--bg);color:var(--text);font-size:15px}
+
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+#app-header{flex-shrink:0;z-index:200}
+#app-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#app-footer{flex-shrink:0;z-index:200}
+
+/* HEADER */
+.header{background:rgba(10,22,40,.95);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.header-brand{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+.brand-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.header-ctx{display:flex;align-items:center;gap:6px;flex:1;justify-content:center;overflow:hidden}
+.hbadge{font-size:11px;font-family:'Syne',sans-serif;font-weight:700;padding:4px 10px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.header-right{display:flex;align-items:center;gap:8px}
+.icon-btn{width:36px;height:36px;border-radius:var(--r2);border:1px solid var(--border);background:var(--surface);color:var(--text2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:all .15s;flex-shrink:0}
+.icon-btn:active{transform:scale(.9);background:var(--surface2)}
+.online-dot{width:8px;height:8px;border-radius:50%;background:var(--text3);flex-shrink:0;transition:background .3s}
+.online-dot.on{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:var(--accent3);flex-shrink:0;animation:pulse 1s infinite;display:none}
+.sync-dot.show{display:block}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* BOTTOM NAV */
+.bottom-nav{background:rgba(10,22,40,.97);backdrop-filter:blur(20px);border-top:1px solid var(--border);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+.nav-item{flex:1;padding:10px 4px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;color:var(--text3);font-size:10px;font-family:'Syne',sans-serif;font-weight:600;letter-spacing:.3px;transition:color .2s;border:none;background:none}
+.nav-item.active{color:var(--accent)}
+.nav-icon{font-size:20px;transition:transform .2s}
+.nav-item.active .nav-icon{transform:translateY(-2px)}
+
+/* SCREENS */
+.screen{display:none;padding:16px 16px 24px;animation:fadeUp .2s ease}
+.screen.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* PANELS */
+.panel{position:fixed;inset:0;z-index:500;background:var(--bg);overflow-y:auto;transform:translateX(100%);transition:transform .25s cubic-bezier(.4,0,.2,1)}
+.panel.open{transform:translateX(0)}
+.panel-header{position:sticky;top:0;z-index:10;background:rgba(10,22,40,.97);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;gap:12px}
+.panel-title{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;flex:1}
+.panel-body{padding:16px 16px 80px}
+
+/* FORMS */
+.field{margin-bottom:14px}
+.field-label{font-size:10px;font-family:'Syne',sans-serif;font-weight:700;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px}
+.field-input,.field-select,.field-textarea{width:100%;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r2);padding:11px 13px;color:var(--text);font-family:'Epilogue',sans-serif;font-size:15px;outline:none;transition:border-color .2s;-webkit-appearance:none}
+.field-input:focus,.field-select:focus,.field-textarea:focus{border-color:var(--accent)}
+.field-textarea{resize:vertical;min-height:72px}
+.field-select option{background:var(--surface)}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* BUTTONS */
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 20px;border-radius:var(--r);border:none;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;letter-spacing:.3px;width:100%}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:var(--accent);color:#0a1628}
+.btn-primary:active{background:#2cc49e}
+.btn-secondary{background:var(--surface);border:1.5px solid var(--border);color:var(--text2)}
+.btn-secondary:active{background:var(--surface2)}
+.btn-danger{background:rgba(255,107,107,.1);border:1.5px solid rgba(255,107,107,.3);color:var(--accent2)}
+.btn-sm{padding:8px 14px;font-size:12px;width:auto}
+.btn-icon{width:36px;height:36px;padding:0;border-radius:var(--r2)}
+.btn-wa{background:#25d366;color:#fff}
+.btn-gap{display:flex;gap:8px;margin-top:12px}
+
+/* CARDS */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:10px;transition:border-color .2s}
+.card-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700}
+.card-sub{font-size:12px;color:var(--text2);margin-top:3px}
+.card-actions{display:flex;gap:6px}
+
+/* SECTION HEADS */
+.section-head{display:flex;align-items:center;justify-content:space-between;margin:20px 0 10px}
+.section-head-title{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--text3);letter-spacing:2px;text-transform:uppercase}
+
+/* CHIPS */
+.chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:.5px}
+.chip-ok{background:rgba(61,217,179,.12);color:var(--accent);border:1px solid rgba(61,217,179,.25)}
+.chip-pend{background:rgba(255,107,107,.1);color:var(--accent2);border:1px solid rgba(255,107,107,.2)}
+.chip-busy{background:rgba(255,201,71,.1);color:var(--accent3);border:1px solid rgba(255,201,71,.2)}
+.chip-free{background:rgba(108,155,255,.1);color:var(--accent4);border:1px solid rgba(108,155,255,.2)}
+
+/* STATUS BUTTONS */
+.status-btns{display:flex;gap:6px}
+.status-btn{flex:1;padding:8px 4px;border-radius:var(--r2);border:1.5px solid var(--border);background:var(--surface);color:var(--text2);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;text-align:center}
+.status-btn.active-ok{background:rgba(61,217,179,.15);border-color:var(--accent);color:var(--accent)}
+.status-btn.active-pend{background:rgba(255,107,107,.12);border-color:var(--accent2);color:var(--accent2)}
+.status-btn.active-libre{background:rgba(108,155,255,.12);border-color:var(--accent4);color:var(--accent4)}
+.status-btn.active-ocupado{background:rgba(255,201,71,.12);border-color:var(--accent3);color:var(--accent3)}
+
+/* PILLS */
+.pill-group{display:flex;flex-wrap:wrap;gap:6px}
+.pill{padding:8px 16px;border-radius:20px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text2);font-family:'Syne',sans-serif;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s}
+.pill.selected{background:rgba(61,217,179,.15);border-color:var(--accent);color:var(--accent)}
+
+/* ITEM CARDS */
+.item-card{background:var(--bg2);border:1.5px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:8px;transition:border-color .2s}
+.item-card.is-ok{border-color:rgba(61,217,179,.3)}
+.item-card.is-busy{border-color:rgba(255,201,71,.3)}
+.item-card.is-pend{border-color:rgba(255,107,107,.3)}
+.item-card-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.item-card-name{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;flex:1}
+
+/* LOGIN */
+.login-wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:var(--bg)}
+.login-logo{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;margin-bottom:6px;letter-spacing:-1px}
+.login-sub{color:var(--text2);font-size:14px;margin-bottom:40px;text-align:center}
+.login-card{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:28px 24px}
+.login-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;margin-bottom:20px}
+
+/* LOADING SCREEN */
+.loading-wrap{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+.spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-family:'Syne',sans-serif;font-size:13px;color:var(--text2);letter-spacing:1px}
+
+/* MISC */
+.divider{height:1px;background:var(--border);margin:16px 0}
+.empty{text-align:center;padding:32px 0;color:var(--text3);font-size:13px}
+.empty-icon{font-size:36px;margin-bottom:8px}
+.alert{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.25);border-radius:var(--r2);padding:12px 14px;font-size:13px;color:var(--accent2);margin-bottom:14px;display:none;gap:8px;align-items:flex-start}
+.alert.show{display:flex}
+.success{background:rgba(61,217,179,.1);border:1px solid rgba(61,217,179,.25);border-radius:var(--r2);padding:12px 14px;font-size:13px;color:var(--accent);margin-bottom:14px;display:none}
+.success.show{display:flex;gap:8px;align-items:center}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-family:'Syne',sans-serif;font-weight:700;background:var(--surface2);color:var(--text2);letter-spacing:.5px}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:10px;font-family:'Syne',sans-serif;font-weight:700}
+.badge-role-admin{background:rgba(255,201,71,.12);color:var(--accent3);border:1px solid rgba(255,201,71,.25)}
+.badge-role-nurse{background:rgba(108,155,255,.12);color:var(--accent4);border:1px solid rgba(108,155,255,.25)}
+.badge-role-enfermero{background:rgba(61,217,179,.1);color:var(--accent);border:1px solid rgba(61,217,179,.2)}
+.preview-text{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;font-size:12px;line-height:1.85;white-space:pre-wrap;word-break:break-word;font-family:monospace;color:var(--text);max-height:50vh;overflow-y:auto}
+.check-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+.check-row:last-child{border-bottom:none}
+.check-row input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);flex-shrink:0;cursor:pointer}
+.check-row label{font-size:14px;cursor:pointer;flex:1}
+.s-amnp{color:var(--amnp)}.bg-amnp{background:rgba(167,139,250,.12);border-color:rgba(167,139,250,.3)}
+.s-intern{color:var(--intern)}.bg-intern{background:rgba(61,217,179,.1);border-color:rgba(61,217,179,.3)}
+.s-poli{color:var(--poli)}.bg-poli{background:rgba(251,146,60,.1);border-color:rgba(251,146,60,.3)}
+.flex{display:flex}.items-center{align-items:center}.justify-between{justify-content:space-between}
+.gap8{gap:8px}.gap6{gap:6px}.font-syne{font-family:'Syne',sans-serif}.fw7{font-weight:700}
+.text-sm{font-size:13px}.text-xs{font-size:11px}.text2{color:var(--text2)}.text3{color:var(--text3)}
+.mt4{margin-top:4px}.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}
+.offline-banner{background:rgba(255,107,107,.1);border-bottom:1px solid rgba(255,107,107,.25);padding:8px 16px;font-size:12px;color:var(--accent2);text-align:center;display:none;font-family:'Syne',sans-serif;font-weight:600}
+.offline-banner.show{display:block}
+
+/* ── NOTIFICACIONES IN-APP ── */
+.notif-toast{position:fixed;top:0;left:0;right:0;z-index:9000;background:var(--surface2);border-bottom:2px solid var(--accent);padding:14px 16px 16px;display:flex;align-items:flex-start;gap:12px;transform:translateY(-110%);transition:transform .35s cubic-bezier(.4,0,.2,1);box-shadow:0 4px 20px rgba(0,0,0,.6);overflow:hidden}
+.notif-toast.show{transform:translateY(0)}
+.notif-toast-icon{font-size:24px;flex-shrink:0;margin-top:1px}
+.notif-toast-body{flex:1;min-width:0}
+.notif-toast-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--accent);margin-bottom:3px}
+.notif-toast-msg{font-size:12px;color:var(--text2);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.notif-toast-close{font-size:20px;color:var(--text3);cursor:pointer;flex-shrink:0;padding:2px 4px;line-height:1;align-self:flex-start}
+.notif-timer{position:absolute;bottom:0;left:0;height:3px;background:var(--accent);animation:ntimer 5s linear forwards}
+@keyframes ntimer{from{width:100%}to{width:0%}}
+.notif-badge{position:absolute;top:-5px;right:-5px;background:var(--accent2);color:#fff;font-family:'Syne',sans-serif;font-size:9px;font-weight:800;min-width:17px;height:17px;border-radius:9px;display:none;align-items:center;justify-content:center;padding:0 3px;border:2px solid var(--bg);pointer-events:none}
+.notif-badge.show{display:flex}
+.nav-hist-wrap{position:relative;display:contents}
+@keyframes navpulse{0%,100%{transform:translateY(-2px) scale(1)}50%{transform:translateY(-2px) scale(1.2)}}
+.nav-pulse .nav-icon{animation:navpulse .5s ease 3}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loading-wrap" id="loading-screen">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loading-text">CONECTANDO...</div>
+</div>
+
+<!-- LOGIN -->
+<div id="login-screen" class="login-wrap" style="display:none">
+  <div class="login-logo">🏥 PaseGuardia</div>
+  <div class="login-sub">Sistema de pases de guardia de enfermería</div>
+  <div class="login-card">
+    <div class="login-title">Iniciar sesión</div>
+    <div class="field">
+      <label class="field-label">Usuario</label>
+      <input class="field-input" id="login-user" type="text" placeholder="tu usuario" autocomplete="username">
+    </div>
+    <div class="field">
+      <label class="field-label">Contraseña</label>
+      <input class="field-input" id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div class="alert" id="login-error">⚠️ Usuario o contraseña incorrectos</div>
+    <button class="btn btn-primary" style="margin-top:8px" onclick="doLogin()" id="login-btn">Entrar</button>
+  </div>
+  <div style="margin-top:20px;font-size:12px;color:var(--text3);text-align:center">v3.0 — Firebase Sync</div>
+</div>
+
+<!-- NOTIFICATION TOAST -->
+<div id="notif-toast" class="notif-toast" onclick="dismissToast()">
+  <div class="notif-toast-icon" id="notif-icon">🔔</div>
+  <div class="notif-toast-body">
+    <div class="notif-toast-title" id="notif-title">Nuevo pase de guardia</div>
+    <div class="notif-toast-msg" id="notif-msg"></div>
+  </div>
+  <div class="notif-toast-close">×</div>
+  <div class="notif-timer" id="notif-timer"></div>
+</div>
+
+<!-- MAIN APP -->
+<div id="main-app" style="display:none;height:100vh;height:100dvh">
+<div id="app">
+  <div id="app-header">
+    <div class="header">
+      <div class="header-brand"><div class="brand-dot"></div>PaseGuardia</div>
+      <div class="header-ctx" id="header-ctx"></div>
+      <div class="header-right">
+        <div class="sync-dot" id="sync-dot" title="Sincronizando..."></div>
+        <div class="online-dot" id="online-dot"></div>
+        <div class="icon-btn" onclick="toggleUserMenu()">👤</div>
+      </div>
+    </div>
+    <div class="offline-banner" id="offline-banner">📵 Sin conexión — los cambios se sincronizarán al reconectarte</div>
+    <div id="user-menu" style="display:none;background:var(--surface2);border-bottom:1px solid var(--border);padding:12px 16px">
+      <div class="flex items-center gap8" style="padding-bottom:10px;border-bottom:1px solid var(--border)">
+        <div>
+          <div class="font-syne fw7" id="um-name">—</div>
+          <div class="text-xs text2 mt4" id="um-role-badge"></div>
+        </div>
+      </div>
+      <button class="btn btn-secondary mt8" style="font-size:13px;padding:10px" onclick="doLogout()">🚪 Cerrar sesión</button>
+    </div>
+  </div>
+
+  <div id="app-body">
+    <!-- HOME -->
+    <div id="screen-home" class="screen active">
+      <div id="clinica-selector-wrap">
+        <div class="section-head" style="margin-top:4px">
+          <div class="section-head-title">Clínica</div>
+          <button class="btn btn-secondary btn-sm" onclick="tryGeolocate()" id="geo-btn" style="font-size:11px">📍 Detectar</button>
+        </div>
+        <div class="pill-group" id="clinica-pills"></div>
+      </div>
+      <div id="sector-wrap" style="display:none;margin-top:20px">
+        <div class="section-head"><div class="section-head-title">Sector</div></div>
+        <div id="sector-cards"></div>
+      </div>
+    </div>
+
+    <!-- HISTORIAL / DASHBOARD -->
+    <div id="screen-historial" class="screen">
+      <div id="historial-list"></div>
+    </div>
+
+    <!-- ADMIN -->
+    <div id="screen-admin" class="screen">
+      <div class="section-head" style="margin-top:4px"><div class="section-head-title">Administración</div></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="card" style="cursor:pointer" onclick="openPanel('panel-clinicas')">
+          <div class="flex items-center gap8"><span style="font-size:22px">🏥</span><div><div class="card-title">Clínicas</div><div class="card-sub">Gestionar clínicas</div></div><span style="margin-left:auto;color:var(--text3)">›</span></div>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="openPanel('panel-sectores')">
+          <div class="flex items-center gap8"><span style="font-size:22px">🗂️</span><div><div class="card-title">Sectores</div><div class="card-sub">Por clínica</div></div><span style="margin-left:auto;color:var(--text3)">›</span></div>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="openPanel('panel-boxes')">
+          <div class="flex items-center gap8"><span style="font-size:22px">📦</span><div><div class="card-title">Boxes / Habitaciones</div><div class="card-sub">Por sector</div></div><span style="margin-left:auto;color:var(--text3)">›</span></div>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="openPanel('panel-consultorios')">
+          <div class="flex items-center gap8"><span style="font-size:22px">🚪</span><div><div class="card-title">Consultorios</div><div class="card-sub">Por sector + médico</div></div><span style="margin-left:auto;color:var(--text3)">›</span></div>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="openPanel('panel-medicos')">
+          <div class="flex items-center gap8"><span style="font-size:22px">👨‍⚕️</span><div><div class="card-title">Médicos</div><div class="card-sub">Listado de médicos</div></div><span style="margin-left:auto;color:var(--text3)">›</span></div>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="openPanel('panel-turnos')">
+          <div class="flex items-center gap8"><span style="font-size:22px">⏰</span><div><div class="card-title">Turnos</div><div class="card-sub">Por tipo de sector</div></div><span style="margin-left:auto;color:var(--text3)">›</span></div>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="openPanel('panel-usuarios')">
+          <div class="flex items-center gap8"><span style="font-size:22px">👥</span><div><div class="card-title">Usuarios</div><div class="card-sub">Enfermeros y Nurses</div></div><span style="margin-left:auto;color:var(--text3)">›</span></div>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="openPanel('panel-wa-nums')">
+          <div class="flex items-center gap8"><span style="font-size:22px">📱</span><div><div class="card-title">WhatsApp</div><div class="card-sub">Números de nurses</div></div><span style="margin-left:auto;color:var(--text3)">›</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="app-footer">
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-nav="home" onclick="showScreen('home')"><span class="nav-icon">🏠</span>Inicio</button>
+      <button class="nav-item" data-nav="historial" onclick="showScreen('historial');clearBadge()" style="position:relative">
+        <span class="nav-icon">📋</span>
+        <span id="nav-hist-label">Historial</span>
+        <span class="notif-badge" id="notif-badge">0</span>
+      </button>
+      <button class="nav-item" id="nav-admin" data-nav="admin" onclick="showScreen('admin')" style="display:none"><span class="nav-icon">⚙️</span>Admin</button>
+    </nav>
+  </div>
+</div>
+</div>
+
+<!-- NURSE PASE VIEWER — panel dedicado, z-index máximo -->
+<div id="nurse-viewer" style="position:fixed;inset:0;z-index:2000;background:var(--bg);transform:translateX(100%);transition:transform .25s cubic-bezier(.4,0,.2,1);overflow-y:auto;display:flex;flex-direction:column">
+  <div style="position:sticky;top:0;z-index:10;background:rgba(10,22,40,.97);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0">
+    <button class="icon-btn" onclick="closeNurseViewer()">←</button>
+    <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;flex:1" id="nv-title">Pase de guardia</div>
+    <button class="icon-btn" onclick="shareNurseViewer()" style="font-size:18px">📤</button>
+  </div>
+  <div style="padding:16px 16px 80px;flex:1">
+    <div id="nv-meta" style="margin-bottom:16px"></div>
+    <div class="preview-text" id="nv-content" style="max-height:none"></div>
+  </div>
+</div>
+
+<div class="panel" id="panel-clinicas">
+  <div class="panel-header"><button class="icon-btn" onclick="closePanel('panel-clinicas')">←</button><div class="panel-title">🏥 Clínicas</div><button class="btn btn-primary btn-sm" onclick="showAddClinica()">+ Agregar</button></div>
+  <div class="panel-body" id="panel-clinicas-body"></div>
+</div>
+<div class="panel" id="panel-sectores">
+  <div class="panel-header"><button class="icon-btn" onclick="closePanel('panel-sectores')">←</button><div class="panel-title">🗂️ Sectores</div><button class="btn btn-primary btn-sm" onclick="showAddSector()">+ Agregar</button></div>
+  <div class="panel-body"><div class="field"><label class="field-label">Filtrar clínica</label><select class="field-select" id="sector-filter-clinica" onchange="renderPanelSectores()"><option value="">Todas</option></select></div><div id="panel-sectores-body"></div></div>
+</div>
+<div class="panel" id="panel-boxes">
+  <div class="panel-header"><button class="icon-btn" onclick="closePanel('panel-boxes')">←</button><div class="panel-title">📦 Boxes / Habs</div><button class="btn btn-primary btn-sm" onclick="showAddBox()">+ Agregar</button></div>
+  <div class="panel-body"><div class="field-row"><div class="field"><label class="field-label">Clínica</label><select class="field-select" id="box-filter-clinica" onchange="updateBoxFilterSector()"><option value="">Todas</option></select></div><div class="field"><label class="field-label">Sector</label><select class="field-select" id="box-filter-sector" onchange="renderPanelBoxes()"><option value="">Todos</option></select></div></div><div id="panel-boxes-body"></div></div>
+</div>
+<div class="panel" id="panel-consultorios">
+  <div class="panel-header"><button class="icon-btn" onclick="closePanel('panel-consultorios')">←</button><div class="panel-title">🚪 Consultorios</div><button class="btn btn-primary btn-sm" onclick="showAddConsultorio()">+ Agregar</button></div>
+  <div class="panel-body"><div class="field-row"><div class="field"><label class="field-label">Clínica</label><select class="field-select" id="cons-filter-clinica" onchange="updateConsFilterSector()"><option value="">Todas</option></select></div><div class="field"><label class="field-label">Sector</label><select class="field-select" id="cons-filter-sector" onchange="renderPanelConsultorios()"><option value="">Todos</option></select></div></div><div id="panel-consultorios-body"></div></div>
+</div>
+<div class="panel" id="panel-medicos">
+  <div class="panel-header"><button class="icon-btn" onclick="closePanel('panel-medicos')">←</button><div class="panel-title">👨‍⚕️ Médicos</div><button class="btn btn-primary btn-sm" onclick="showAddMedico()">+ Agregar</button></div>
+  <div class="panel-body" id="panel-medicos-body"></div>
+</div>
+<div class="panel" id="panel-turnos">
+  <div class="panel-header"><button class="icon-btn" onclick="closePanel('panel-turnos')">←</button><div class="panel-title">⏰ Turnos</div><button class="btn btn-primary btn-sm" onclick="showAddTurno()">+ Agregar</button></div>
+  <div class="panel-body" id="panel-turnos-body"></div>
+</div>
+<div class="panel" id="panel-usuarios">
+  <div class="panel-header"><button class="icon-btn" onclick="closePanel('panel-usuarios')">←</button><div class="panel-title">👥 Usuarios</div><button class="btn btn-primary btn-sm" onclick="showAddUsuario()">+ Agregar</button></div>
+  <div class="panel-body" id="panel-usuarios-body"></div>
+</div>
+<div class="panel" id="panel-wa-nums">
+  <div class="panel-header"><button class="icon-btn" onclick="closePanel('panel-wa-nums')">←</button><div class="panel-title">📱 WhatsApp</div><button class="btn btn-primary btn-sm" onclick="showAddWaNum()">+ Agregar</button></div>
+  <div class="panel-body" id="panel-wa-nums-body"></div>
+</div>
+
+<!-- PASE PANEL -->
+<div class="panel" id="panel-pase">
+  <div class="panel-header"><button class="icon-btn" onclick="closePanel('panel-pase')">←</button><div class="panel-title" id="panel-pase-title">Nuevo Pase</div></div>
+  <div class="panel-body" id="panel-pase-body"></div>
+</div>
+
+<!-- PREVIEW PANEL -->
+<div class="panel" id="panel-preview">
+  <div class="panel-header"><button class="icon-btn" onclick="closePanel('panel-preview')">←</button><div class="panel-title">Vista Previa</div></div>
+  <div class="panel-body">
+    <div class="success" id="copy-ok">✅ Copiado al portapapeles</div>
+    <div class="preview-text" id="preview-content"></div>
+    <div class="btn-gap mt12">
+      <button class="btn btn-secondary" onclick="copyPreview()" style="flex:1">📋 Copiar</button>
+      <button class="btn btn-wa" onclick="sendWA()" style="flex:1">📤 WhatsApp</button>
+    </div>
+    <button class="btn btn-primary mt8" onclick="savePase()" id="btn-save-pase">💾 Guardar pase</button>
+    <div id="wa-links-section" class="mt12"></div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay" style="display:none;position:fixed;inset:0;z-index:800;background:rgba(0,0,0,.7);backdrop-filter:blur(4px)" onclick="closeModal()"></div>
+<div id="modal" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:900;background:var(--surface);border-radius:var(--r) var(--r) 0 0;padding:20px 16px 32px;max-height:85vh;overflow-y:auto">
+  <div style="width:40px;height:4px;border-radius:2px;background:var(--border2);margin:0 auto 20px"></div>
+  <div id="modal-content"></div>
+</div>
+
+<!-- Firebase SDK -->
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js';
+import {
+  getFirestore, collection, doc, getDocs, getDoc, setDoc, addDoc,
+  updateDoc, deleteDoc, onSnapshot, query, orderBy, limit,
+  enableIndexedDbPersistence, serverTimestamp
+} from 'https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js';
+import {
+  getMessaging, getToken, onMessage
+} from 'https://www.gstatic.com/firebasejs/12.10.0/firebase-messaging.js';
+
+// ══════════════════════════════════════════════════════════════
+//  FIREBASE CONFIG — credenciales del proyecto
+// ══════════════════════════════════════════════════════════════
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyCW-jz1wDDi22bb2eycVurectqOMuI_DfY",
+  authDomain:        "pase-guardia.firebaseapp.com",
+  projectId:         "pase-guardia",
+  storageBucket:     "pase-guardia.firebasestorage.app",
+  messagingSenderId: "555094730766",
+  appId:             "1:555094730766:web:511ab1a8a567aba69a745f"
+};
+
+const app = initializeApp(FIREBASE_CONFIG);
+const db  = getFirestore(app);
+
+// ── Firebase Cloud Messaging ───────────────────────────────────
+// VAPID_KEY: reemplazá con tu clave de Project Settings → Cloud Messaging → Web Push certificates
+const VAPID_KEY = 'REEMPLAZAR_CON_TU_VAPID_KEY';
+let messaging = null;
+try { messaging = getMessaging(app); } catch(e) { /* no soportado en este browser */ }
+
+// Notificaciones IN-APP (cuando la app está en PRIMER PLANO)
+// El snapshot de Firestore ya maneja los toasts in-app cuando la app está abierta.
+// onMessage solo se necesitaría si quisiéramos sobreescribir ese comportamiento —
+// lo suprimimos para evitar notificación doble.
+if (messaging) {
+  onMessage(messaging, _payload => {
+    // No hacer nada: el snapshot de Firestore ya disparó showNotifToast()
+    // FCM solo actúa cuando la app está en background/cerrada (via service worker)
+  });
+}
+
+// Enable offline persistence
+enableIndexedDbPersistence(db).catch(() => {});
+
+// ══════════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════════
+
+let currentUser  = null;
+let selectedClinicaId = null;
+let selectedSectorId  = null;
+let paseData     = {};
+let previewText  = '';
+
+// Local cache (populated from Firestore listeners)
+let CACHE = { clinicas:[], sectores:[], boxes:[], consultorios:[], medicos:[], turnos:[], usuarios:[], waNumbers:[], historial:[] };
+
+// Firestore unsubscribers
+const unsubs = [];
+
+// ══════════════════════════════════════════════════════════════
+//  FIRESTORE HELPERS
+// ══════════════════════════════════════════════════════════════
+
+function setSyncing(on) {
+  document.getElementById('sync-dot').classList.toggle('show', on);
+}
+
+async function fsSet(colName, id, data) {
+
+  setSyncing(true);
+  try { await setDoc(doc(db, colName, id), { ...data, _updatedAt: serverTimestamp() }); }
+  finally { setSyncing(false); }
+}
+
+async function fsAdd(colName, data) {
+
+  setSyncing(true);
+  try {
+    const ref = await addDoc(collection(db, colName), { ...data, _createdAt: serverTimestamp() });
+    return ref.id;
+  } finally { setSyncing(false); }
+}
+
+async function fsUpdate(colName, id, data) {
+
+  setSyncing(true);
+  try { await updateDoc(doc(db, colName, id), { ...data, _updatedAt: serverTimestamp() }); }
+  finally { setSyncing(false); }
+}
+
+async function fsDelete(colName, id) {
+
+  setSyncing(true);
+  try { await deleteDoc(doc(db, colName, id)); }
+  finally { setSyncing(false); }
+}
+
+// Subscribe to a collection and keep cache updated
+function subscribe(colName, cacheKey, onUpdate, queryFn) {
+
+  const ref = queryFn ? queryFn(collection(db, colName)) : collection(db, colName);
+  const unsub = onSnapshot(ref, snap => {
+    CACHE[cacheKey] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    onUpdate && onUpdate();
+  }, err => console.warn('Snapshot error', colName, err));
+  unsubs.push(unsub);
+}
+
+function unsubscribeAll() { unsubs.forEach(u => u()); unsubs.length = 0; }
+
+// ══════════════════════════════════════════════════════════════
+//  NOTIFICATION SYSTEM
+// ══════════════════════════════════════════════════════════════
+
+let notifBadgeCount    = 0;
+let toastTimer         = null;
+let historialBooted    = false;
+let lastSeenAt         = 0;
+let historialUnsub     = null; // separate unsub for historial so we can restart on login
+let loginTimestamp     = null; // set at login time, only docs after this get toasts
+
+// Subscribe historial post-login with new-document detection
+function subscribeHistorial() {
+  // Unsubscribe previous listener if re-logging in
+  if (historialUnsub) { historialUnsub(); historialUnsub = null; }
+  historialBooted = false;
+  loginTimestamp  = new Date(); // docs created before this = old, after = new
+
+  const ref = query(collection(db, 'historial'), orderBy('_createdAt','desc'), limit(100));
+  historialUnsub = onSnapshot(ref, snap => {
+    CACHE.historial = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    if (!historialBooted) {
+      historialBooted = true;
+      renderHistorial(); // first load: build full shell
+      return;
+    }
+
+    // Subsequent snapshots: only rebuild the list, never destroy the filter shell
+    const shellExists = !!document.getElementById('nd-filter-shell');
+    if (shellExists) {
+      renderPaseList(); // preserves focus on inputs
+    } else {
+      renderHistorial(); // shell was cleared (e.g. screen not visible yet)
+    }
+
+    const newDocs = snap.docChanges()
+      .filter(ch => ch.type === 'added')
+      .map(ch => ({ id: ch.doc.id, ...ch.doc.data() }))
+      .filter(p => {
+        if (p.autor === currentUser?.nombre) return false;
+        return shouldNotifyUser(p);
+      });
+
+    if (newDocs.length > 0) {
+      newDocs.forEach(p => showNotifToast(p));
+    }
+  }, err => console.warn('Historial snapshot error', err));
+}
+
+// Decide if this user should see a notification for this pase
+function shouldNotifyUser(pase) {
+  if (!currentUser) return false;
+  if (currentUser.rol === 'admin') return true; // admin sees everything
+
+  if (currentUser.rol === 'nurse') {
+    // Nurse gets notified for pases from clinicas/sectores in their WA config
+    // (We use waNumbers as the definition of nurse scope)
+    const nurseWas = CACHE.waNumbers.filter(w =>
+      waNumMatchesPase(w, pase.clinicaId, pase.sectorId)
+    );
+    return nurseWas.length > 0 || CACHE.waNumbers.length === 0; // if no WA configured, see all
+  }
+
+  // enfermero: not notified of others' pases
+  return false;
+}
+
+// Show the toast banner
+// ── FCM Token Registration ─────────────────────────────────────
+async function registerPushToken() {
+  // Enfermero no recibe notificaciones push
+  if (!currentUser || currentUser.rol === 'enfermero') return;
+  if (!messaging || VAPID_KEY === 'REEMPLAZAR_CON_TU_VAPID_KEY') return;
+  if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+
+  try {
+    const swReg = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') return;
+
+    const token = await getToken(messaging, {
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: swReg
+    });
+    if (!token) return;
+
+    const tokenId = token.slice(-20);
+    await setDoc(doc(db, 'fcmTokens', tokenId), {
+      token,
+      userName:  currentUser.nombre,
+      rol:       currentUser.rol,
+      clinicaId: currentUser.clinicaId || null,
+      sectorId:  currentUser.sectorId  || null,
+      updatedAt: serverTimestamp(),
+      userAgent: navigator.userAgent.slice(0, 100)
+    });
+    console.log('✅ Push token registrado para', currentUser.nombre);
+  } catch(e) {
+    console.warn('Push registration failed:', e.message);
+  }
+}
+
+function showNotifToast(pase) {
+  // Update badge
+  notifBadgeCount++;
+  const badge = document.getElementById('notif-badge');
+  if (badge) {
+    badge.textContent = notifBadgeCount > 9 ? '9+' : String(notifBadgeCount);
+    badge.classList.add('show');
+  }
+
+  // Pulse the nav button
+  const navBtn = document.querySelector('[data-nav="historial"]');
+  if (navBtn) {
+    navBtn.classList.remove('nav-pulse');
+    void navBtn.offsetWidth; // reflow to restart animation
+    navBtn.classList.add('nav-pulse');
+    setTimeout(() => navBtn.classList.remove('nav-pulse'), 1600);
+  }
+
+  // Build toast content
+  const tipoIcons = {amnp:'🟣', internacion:'🟢', policlinica:'🟠'};
+  const sector = CACHE.sectores.find(s => s.id === pase.sectorId);
+  const icon   = tipoIcons[sector?.tipo] || '🔔';
+  const title  = `${pase.clinicaNombre} — ${pase.sectorNombre}`;
+  const msg    = `Turno ${pase.turno} · ${pase.fecha}\nEntrega: ${pase.entrega} → Recibe: ${pase.recibe}`;
+
+  document.getElementById('notif-icon').textContent  = icon;
+  document.getElementById('notif-title').textContent = title;
+  document.getElementById('notif-msg').textContent   = msg;
+
+  // Reset and show timer bar
+  const timerEl = document.getElementById('notif-timer');
+  if (timerEl) {
+    timerEl.style.animation = 'none';
+    void timerEl.offsetWidth;
+    timerEl.style.animation = 'ntimer 5s linear forwards';
+  }
+
+  // Show toast
+  const toast = document.getElementById('notif-toast');
+  if (toast) toast.classList.add('show');
+
+  // Play subtle sound
+  playNotifSound();
+
+  // Auto-dismiss after 5s
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(dismissToast, 5000);
+}
+
+window.dismissToast = function() {
+  clearTimeout(toastTimer);
+  const toast = document.getElementById('notif-toast');
+  if (toast) toast.classList.remove('show');
+};
+
+window.clearBadge = function() {
+  notifBadgeCount = 0;
+  const badge = document.getElementById('notif-badge');
+  if (badge) badge.classList.remove('show');
+  lastSeenAt = Date.now();
+};
+
+function playNotifSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Two-tone chime: pleasant, not jarring
+    const notes = [880, 1100];
+    notes.forEach((freq, i) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.18;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.18, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      osc.start(t);
+      osc.stop(t + 0.4);
+    });
+  } catch(e) { /* audio not available, skip silently */ }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  INITIAL DATA SEED  (runs once if collections are empty)
+// ══════════════════════════════════════════════════════════════
+
+async function seedIfEmpty() {
+
+  const snap = await getDocs(collection(db, 'usuarios'));
+  if (!snap.empty) return; // already seeded
+
+  setSyncing(true);
+  document.getElementById('loading-text').textContent = 'INICIANDO BASE DE DATOS...';
+
+  const seed = {
+    clinicas: [
+      {id:'c1',nombre:'Setiembre',lat:-34.906,lng:-56.189},
+      {id:'c2',nombre:'Carrasco',lat:-34.897,lng:-56.065},
+      {id:'c3',nombre:'Golf',lat:-34.921,lng:-56.147},
+      {id:'c4',nombre:'Horneros',lat:-34.864,lng:-56.084},
+      {id:'c5',nombre:'Punta del Este',lat:-34.967,lng:-54.946},
+    ],
+    sectores: [
+      {id:'s1',clinicaId:'c1',nombre:'AMNP',tipo:'amnp'},
+      {id:'s2',clinicaId:'c1',nombre:'Internación',tipo:'internacion'},
+      {id:'s3',clinicaId:'c1',nombre:'Policlínica',tipo:'policlinica'},
+      {id:'s4',clinicaId:'c2',nombre:'AMNP',tipo:'amnp'},
+      {id:'s5',clinicaId:'c2',nombre:'Internación',tipo:'internacion'},
+      {id:'s6',clinicaId:'c2',nombre:'Policlínica',tipo:'policlinica'},
+    ],
+    boxes: [
+      {id:'b1',sectorId:'s1',nombre:'Box 1'},{id:'b2',sectorId:'s1',nombre:'Box 2'},{id:'b3',sectorId:'s1',nombre:'Box 3'},
+      {id:'b4',sectorId:'s2',nombre:'Habitación 1'},{id:'b5',sectorId:'s2',nombre:'Habitación 2'},{id:'b6',sectorId:'s2',nombre:'Habitación 3'},
+      {id:'b7',sectorId:'s3',nombre:'Box 1'},{id:'b8',sectorId:'s3',nombre:'Box 2'},
+    ],
+    consultorios: [
+      {id:'co1',sectorId:'s1',nombre:'Consultorio 10',medicoId:''},
+      {id:'co2',sectorId:'s1',nombre:'Consultorio 11',medicoId:''},
+      {id:'co3',sectorId:'s3',nombre:'Consultorio 1',medicoId:''},
+      {id:'co4',sectorId:'s3',nombre:'Consultorio 2',medicoId:''},
+    ],
+    medicos: [
+      {id:'m1',nombre:'Dr. García'},{id:'m2',nombre:'Dr. Melogno'},{id:'m3',nombre:'Dr. Arribeltz'},
+    ],
+    turnos: [
+      {id:'t1',tipo:'amnp',nombre:'Mañana'},{id:'t2',tipo:'amnp',nombre:'Tarde'},
+      {id:'t3',tipo:'amnp',nombre:'Vespertino'},{id:'t4',tipo:'amnp',nombre:'Noche'},
+      {id:'t5',tipo:'policlinica',nombre:'Mañana'},{id:'t6',tipo:'policlinica',nombre:'Tarde'},
+      {id:'t7',tipo:'internacion',nombre:'Mañana'},{id:'t8',tipo:'internacion',nombre:'Tarde'},
+      {id:'t9',tipo:'internacion',nombre:'Vespertino'},{id:'t10',tipo:'internacion',nombre:'Noche'},
+    ],
+    usuarios: [
+      {id:'u1',nombre:'Admin',username:'admin',password:'admin123',rol:'admin'},
+      {id:'u2',nombre:'Nurse García',username:'nurse1',password:'nurse123',rol:'nurse'},
+      {id:'u3',nombre:'Enfermero Pérez',username:'enf1',password:'enf123',rol:'enfermero'},
+    ],
+    waNumbers: [],
+  };
+
+  for (const [col, items] of Object.entries(seed)) {
+    for (const item of items) {
+      const { id, ...data } = item;
+      await setDoc(doc(db, col, id), data);
+    }
+  }
+  setSyncing(false);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════════════════════════════
+
+async function boot() {
+  const loadText = document.getElementById('loading-text');
+
+  try {
+    loadText.textContent = 'CONECTANDO...';
+    await seedIfEmpty();
+
+    loadText.textContent = 'CARGANDO DATOS...';
+    subscribe('clinicas',    'clinicas',    renderHomeClinicas);
+    subscribe('sectores',    'sectores',    null);
+    subscribe('boxes',       'boxes',       null);
+    subscribe('consultorios','consultorios',null);
+    subscribe('medicos',     'medicos',     null);
+    subscribe('turnos',      'turnos',      null);
+    subscribe('usuarios',    'usuarios',    null);
+    subscribe('waNumbers',   'waNumbers',   null);
+    // historial se suscribe en initApp() post-login para poder detectar nuevos docs correctamente
+
+    // Wait for initial snapshot
+    await new Promise(r => setTimeout(r, 1200));
+
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+  } catch(e) {
+    loadText.textContent = 'ERROR: ' + e.message;
+    console.error('Boot error:', e);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  AUTH
+// ══════════════════════════════════════════════════════════════
+
+window.doLogin = function() {
+  const u = document.getElementById('login-user').value.trim();
+  const p = document.getElementById('login-pass').value.trim();
+  const errEl = document.getElementById('login-error');
+
+  const user = CACHE.usuarios.find(x => x.username === u && x.password === p);
+  if (!user) { errEl.classList.add('show'); return; }
+
+  errEl.classList.remove('show');
+  currentUser = user;
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  initApp();
+};
+
+window.doLogout = function() {
+  currentUser = null; selectedClinicaId = null; selectedSectorId = null;
+  historialBooted = false; notifBadgeCount = 0; clearTimeout(toastTimer);
+  if (historialUnsub) { historialUnsub(); historialUnsub = null; }
+  CACHE.historial = [];
+  Object.keys(ndFilter).forEach(k => ndFilter[k] = '');
+  // Clear filter shell so it rebuilds on next login
+  const hl = document.getElementById('historial-list');
+  if (hl) hl.innerHTML = '';
+  dismissToast();
+  document.getElementById('main-app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+  document.getElementById('user-menu').style.display = 'none';
+};
+
+function initApp() {
+  document.getElementById('um-name').textContent = currentUser.nombre;
+  const roleLabels  = {admin:'🔑 Admin',nurse:'💙 Nurse',enfermero:'🩺 Enfermero'};
+  const roleClasses = {admin:'badge-role-admin',nurse:'badge-role-nurse',enfermero:'badge-role-enfermero'};
+  document.getElementById('um-role-badge').innerHTML =
+    `<span class="badge ${roleClasses[currentUser.rol]}">${roleLabels[currentUser.rol]}</span>`;
+
+  const navAdmin = document.getElementById('nav-admin');
+  const navHome  = document.querySelector('[data-nav="home"]');
+  const navHist  = document.querySelector('[data-nav="historial"]');
+  const navLabel = document.getElementById('nav-hist-label');
+
+  if (currentUser.rol === 'admin') {
+    navAdmin.style.display = 'flex'; navHome.style.display = 'flex'; navHist.style.display = 'flex';
+  } else if (currentUser.rol === 'nurse') {
+    navAdmin.style.display = 'none'; navHome.style.display = 'none'; navHist.style.display = 'flex';
+    navLabel.textContent = 'Dashboard';
+    // Show historial screen with loading placeholder — data arrives via subscribeHistorial
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-historial').classList.add('active');
+    document.getElementById('historial-list').innerHTML =
+      '<div class="empty"><div class="spinner" style="margin:0 auto 16px"></div><div style="font-size:13px;color:var(--text2)">Cargando pases...</div></div>';
+  } else {
+    navAdmin.style.display = 'none'; navHome.style.display = 'flex'; navHist.style.display = 'flex';
+  }
+
+  updateOnlineStatus();
+  renderHomeClinicas();
+  populateFilterSelects();
+
+  // subscribeHistorial calls renderHistorial once data arrives — don't call it before
+  subscribeHistorial();
+
+  // Register FCM push token for this device
+  registerPushToken();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ONLINE / OFFLINE
+// ══════════════════════════════════════════════════════════════
+
+function updateOnlineStatus() {
+  const dot = document.getElementById('online-dot');
+  const banner = document.getElementById('offline-banner');
+  const online = navigator.onLine;
+  if (dot) dot.classList.toggle('on', online);
+  if (banner) banner.classList.toggle('show', !online);
+}
+window.addEventListener('online',  updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+
+// ══════════════════════════════════════════════════════════════
+//  NAVIGATION
+// ══════════════════════════════════════════════════════════════
+
+window.showScreen = function(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById('screen-' + name)?.classList.add('active');
+  document.querySelector(`[data-nav="${name}"]`)?.classList.add('active');
+  document.getElementById('user-menu').style.display = 'none';
+
+  if (name === 'historial') {
+    clearBadge();
+    // If shell already built, just refresh the list (preserves filter input focus)
+    if (document.getElementById('nd-filter-shell')) {
+      renderPaseList();
+    } else {
+      renderHistorial();
+    }
+  }
+};
+
+window.openPanel = function(id) {
+  document.getElementById(id)?.classList.add('open');
+  populatePanel(id);
+};
+window.closePanel = function(id) { document.getElementById(id)?.classList.remove('open'); };
+
+window.openModal = function(html) {
+  document.getElementById('modal-content').innerHTML = html;
+  document.getElementById('modal-overlay').style.display = 'block';
+  document.getElementById('modal').style.display = 'block';
+};
+window.closeModal = function() {
+  document.getElementById('modal-overlay').style.display = 'none';
+  document.getElementById('modal').style.display = 'none';
+};
+window.toggleUserMenu = function() {
+  const m = document.getElementById('user-menu');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+};
+
+// ══════════════════════════════════════════════════════════════
+//  HOME
+// ══════════════════════════════════════════════════════════════
+
+function renderHomeClinicas() {
+  const container = document.getElementById('clinica-pills');
+  if (!container) return;
+  container.innerHTML = CACHE.clinicas.map(c =>
+    `<button class="pill ${selectedClinicaId===c.id?'selected':''}" onclick="selectClinica('${c.id}')">${c.nombre}</button>`
+  ).join('');
+  updateHeaderCtx();
+  if (selectedClinicaId) renderHomeSectores();
+}
+
+window.selectClinica = function(id) {
+  selectedClinicaId = id; selectedSectorId = null;
+  renderHomeClinicas();
+  document.getElementById('sector-wrap').style.display = 'block';
+  renderHomeSectores(); updateHeaderCtx();
+};
+
+function renderHomeSectores() {
+  const sectores = CACHE.sectores
+    .filter(s => s.clinicaId === selectedClinicaId)
+    .slice().sort((a,b) => (a.orden??99) - (b.orden??99));
+  const container = document.getElementById('sector-cards');
+  const icons  = {amnp:'🟣',internacion:'🟢',policlinica:'🟠'};
+  const labels = {amnp:'AMNP',internacion:'Internación',policlinica:'Policlínica'};
+  const colors = {amnp:'bg-amnp',internacion:'bg-intern',policlinica:'bg-poli'};
+  const canPase = currentUser?.rol !== 'nurse';
+
+  if (!sectores.length) { container.innerHTML = '<div class="empty">Sin sectores configurados</div>'; return; }
+  container.innerHTML = sectores.map(s => `
+    <div class="card ${colors[s.tipo]||''}" style="cursor:${canPase?'pointer':'default'};margin-bottom:10px"
+      ${canPase ? `onclick="startPase('${s.id}')"` : ''}>
+      <div class="flex items-center gap8">
+        <span style="font-size:24px">${icons[s.tipo]||'📋'}</span>
+        <div><div class="card-title">${s.nombre}</div><div class="card-sub text-xs">${labels[s.tipo]||s.tipo}</div></div>
+        ${canPase ? '<span style="margin-left:auto;font-size:20px;color:var(--text3)">›</span>'
+                  : '<span style="margin-left:auto;font-size:11px;color:var(--text3);font-family:\'Syne\',sans-serif">SOLO LECTURA</span>'}
+      </div>
+    </div>`).join('');
+}
+
+function updateHeaderCtx() {
+  const c = CACHE.clinicas.find(x => x.id === selectedClinicaId);
+  const s = CACHE.sectores.find(x => x.id === selectedSectorId);
+  let html = c ? `<span class="hbadge">${c.nombre}</span>` : '';
+  if (s) html += `<span style="color:var(--text3);font-size:12px">›</span><span class="hbadge">${s.nombre}</span>`;
+  document.getElementById('header-ctx').innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  GEOLOCATION
+// ══════════════════════════════════════════════════════════════
+
+window.tryGeolocate = function() {
+  if (!navigator.geolocation) return;
+  const btn = document.getElementById('geo-btn');
+  btn.textContent = '⏳';
+  navigator.geolocation.getCurrentPosition(pos => {
+    btn.textContent = '📍 Detectar';
+    const { latitude: lat, longitude: lng } = pos.coords;
+    let closest = null, minDist = Infinity;
+    CACHE.clinicas.forEach(c => {
+      if (!c.lat || !c.lng) return;
+      const d = Math.sqrt((c.lat-lat)**2 + (c.lng-lng)**2);
+      if (d < minDist) { minDist = d; closest = c; }
+    });
+    if (closest && minDist < 0.05) selectClinica(closest.id);
+  }, () => { btn.textContent = '📍 Detectar'; });
+};
+
+// ══════════════════════════════════════════════════════════════
+//  PASE FORM
+// ══════════════════════════════════════════════════════════════
+
+window.startPase = function(sectorId) {
+  try {
+    selectedSectorId = sectorId;
+    const sector = CACHE.sectores.find(s => s.id === sectorId);
+    if (!sector) { alert('Sector no encontrado: ' + sectorId); return; }
+
+    const clinicaId = sector.clinicaId || selectedClinicaId;
+    const clinica   = CACHE.clinicas.find(c => c.id === clinicaId);
+    if (!clinica) { alert('Clínica no encontrada para este sector'); return; }
+
+    // Ensure paseData has correct clinicaId
+    selectedClinicaId = clinicaId;
+    updateHeaderCtx();
+    paseData = { sectorId, clinicaId, boxes: {}, consultorios: {} };
+
+    document.getElementById('panel-pase-title').textContent = `${clinica.nombre} — ${sector.nombre}`;
+    document.getElementById('panel-pase-body').innerHTML = buildPaseForm(sector);
+    // Open panel directly without calling populatePanel
+    document.getElementById('panel-pase').classList.add('open');
+  } catch(e) {
+    console.error('startPase error:', e);
+    alert('Error al abrir el pase: ' + e.message);
+  }
+};
+
+function buildPaseForm(sector) {
+  const today = new Date().toLocaleDateString('es-AR');
+  const turnos = CACHE.turnos.filter(t => t.tipo === sector.tipo);
+  const boxes  = CACHE.boxes.filter(b => b.sectorId === sector.id)
+                   .sort((a,b) => a.nombre.localeCompare(b.nombre, 'es', {numeric:true}));
+  const cons   = CACHE.consultorios.filter(c => c.sectorId === sector.id)
+                   .sort((a,b) => a.nombre.localeCompare(b.nombre, 'es', {numeric:true}));
+  const isIntern = sector.tipo === 'internacion';
+  const hasCons  = sector.tipo !== 'internacion';
+
+  let h = `
+    <div class="field-row">
+      <div class="field"><label class="field-label">📅 Fecha</label><input class="field-input" id="pf-fecha" value="${today}"></div>
+      <div class="field"><label class="field-label">⏰ Turno</label>
+        <select class="field-select" id="pf-turno">${turnos.map(t=>`<option>${t.nombre}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label class="field-label">👩‍⚕️ Entrega</label><input class="field-input" id="pf-entrega" placeholder="Nombre"></div>
+      <div class="field"><label class="field-label">👨‍⚕️ Recibe</label><input class="field-input" id="pf-recibe" placeholder="Nombre"></div>
+    </div>`;
+
+  if (!isIntern) h += `
+    <div class="field"><label class="field-label" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+      <input type="checkbox" id="pf-carro" style="width:18px;height:18px;accent-color:var(--accent)">
+      💉 Carro de curaciones listo</label></div>`;
+
+  const boxLabel = isIntern ? 'Habitaciones' : 'Boxes';
+  h += `<div class="section-head"><div class="section-head-title">${isIntern?'🛏️':'📦'} ${boxLabel}</div></div>`;
+  if (!boxes.length) {
+    h += `<div class="empty">Sin ${boxLabel.toLowerCase()} configurados</div>`;
+  } else {
+    boxes.forEach(box => { h += buildBoxCard(box, isIntern); });
+  }
+
+  if (hasCons) {
+    h += `<div class="section-head mt16"><div class="section-head-title">🚪 Consultorios</div></div>`;
+    if (!cons.length) h += `<div class="empty">Sin consultorios configurados</div>`;
+    else cons.forEach(c => { h += buildConsultorioCard(c); });
+  }
+
+  if (sector.tipo === 'policlinica') {
+    h += `<div class="field mt8"><label class="field-label">Pendientes de levantar</label>
+      <input class="field-input" id="pf-pend-levantar" placeholder="Ej: Cons. 2"></div>`;
+  }
+
+  h += `
+    <div class="divider"></div>
+    <div class="field"><label class="field-label">📋 Pendientes / Observaciones / Alertas</label>
+      <textarea class="field-textarea" id="pf-obs" placeholder="Pendientes para el próximo turno..."></textarea></div>
+    <div class="field"><label class="field-label">✅ Tareas realizadas en el turno</label>
+      <textarea class="field-textarea" id="pf-tareas" placeholder="Tareas realizadas..."></textarea></div>
+    <button class="btn btn-primary mt8" onclick="generatePreview()">👁 Ver y enviar</button>`;
+  return h;
+}
+
+function buildBoxCard(box, isIntern) {
+  const id = box.id;
+  const listoLabel = isIntern ? 'Libre' : 'Listo';
+  return `
+  <div class="item-card is-ok" id="boxcard-${id}">
+    <div class="item-card-head">
+      <div class="item-card-name">${box.nombre}</div>
+      <div id="boxchip-${id}" class="chip chip-ok">✓ ${listoLabel}</div>
+    </div>
+    <div class="status-btns" style="margin-bottom:10px">
+      <button class="status-btn active-ok"  id="boxbtn-ok-${id}"      onclick="setBoxStatus('${id}','ok')">✅ ${listoLabel}</button>
+      <button class="status-btn"            id="boxbtn-ocupado-${id}" onclick="setBoxStatus('${id}','ocupado')">👤 Ocupado</button>
+      <button class="status-btn"            id="boxbtn-pend-${id}"    onclick="setBoxStatus('${id}','pend')">⚠️ Pendiente</button>
+    </div>
+    <div id="boxdetail-pend-${id}" style="display:none">
+      <div><label class="field-label">Observación</label>
+        <input class="field-input" id="box-obs-${id}" placeholder="Motivo del pendiente..."></div>
+    </div>
+    <div id="boxdetail-ocupado-${id}" style="display:none">
+      ${isIntern ? `
+      <div class="field-row" style="margin-bottom:8px">
+        <div><label class="field-label">Iniciales</label><input class="field-input" id="box-inic-${id}" placeholder="M.G."></div>
+        <div><label class="field-label">Médico</label><input class="field-input" id="box-dr-${id}" placeholder="Dr."></div>
+      </div>
+      <div style="margin-bottom:8px"><label class="field-label">Diagnóstico</label><input class="field-input" id="box-dx-${id}" placeholder="Diagnóstico clínico"></div>
+      <div style="margin-bottom:8px"><label class="field-label">Evolución / Detalle</label><textarea class="field-textarea" id="box-evo-${id}" style="min-height:60px" placeholder="Estado, vías, indicaciones..."></textarea></div>
+      <div><label class="field-label">Observación adicional</label><input class="field-input" id="box-obs-ocup-${id}" placeholder="Observación..."></div>
+      ` : `
+      <div class="field-row" style="margin-bottom:8px">
+        <div><label class="field-label">Iniciales</label><input class="field-input" id="box-inic-${id}" placeholder="M.G."></div>
+        <div><label class="field-label">Dx / Info</label><input class="field-input" id="box-dx-${id}" placeholder="Diagnóstico"></div>
+      </div>
+      <div style="margin-bottom:8px"><label class="field-label">Detalle</label><textarea class="field-textarea" id="box-evo-${id}" style="min-height:50px" placeholder="Indicaciones, estado..."></textarea></div>
+      <div><label class="field-label">Observación</label><input class="field-input" id="box-obs-ocup-${id}" placeholder="Observación..."></div>
+      `}
+    </div>
+  </div>`;
+}
+
+window.setBoxStatus = function(id, status) {
+  ['ok','pend','ocupado'].forEach(s => {
+    const b = document.getElementById(`boxbtn-${s}-${id}`); if(b) b.className = 'status-btn';
+  });
+  const card = document.getElementById(`boxcard-${id}`);
+  const chip = document.getElementById(`boxchip-${id}`);
+  const dPend = document.getElementById(`boxdetail-pend-${id}`);
+  const dOcup = document.getElementById(`boxdetail-ocupado-${id}`);
+  if (dPend) dPend.style.display = 'none';
+  if (dOcup) dOcup.style.display = 'none';
+  card.className = 'item-card';
+  if (status === 'ok') {
+    document.getElementById(`boxbtn-ok-${id}`).className = 'status-btn active-ok';
+    card.classList.add('is-ok'); chip.className = 'chip chip-ok';
+    const lbl = document.getElementById(`boxbtn-ok-${id}`).textContent.replace('✅ ','');
+    chip.textContent = '✓ ' + lbl;
+  } else if (status === 'pend') {
+    document.getElementById(`boxbtn-pend-${id}`).className = 'status-btn active-pend';
+    card.classList.add('is-pend'); chip.className = 'chip chip-pend'; chip.textContent = '⚠ Pendiente';
+    if (dPend) dPend.style.display = 'block';
+  } else {
+    document.getElementById(`boxbtn-ocupado-${id}`).className = 'status-btn active-ocupado';
+    card.classList.add('is-busy'); chip.className = 'chip chip-busy'; chip.textContent = '👤 Ocupado';
+    if (dOcup) dOcup.style.display = 'block';
+  }
+  paseData.boxes[id] = { status };
+};
+
+function buildConsultorioCard(cons) {
+  const id = cons.id;
+  const medOpts = `<option value="">— Seleccionar —</option>` +
+    CACHE.medicos.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('') +
+    `<option value="__otro__">✏️ Otro (escribir)</option>`;
+  return `
+  <div class="item-card" id="conscard-${id}">
+    <div class="item-card-head">
+      <div class="item-card-name">${cons.nombre}</div>
+      <div id="conschip-${id}" class="chip chip-free">🟢 Libre</div>
+    </div>
+    <div class="status-btns" style="margin-bottom:10px">
+      <button class="status-btn active-libre" id="consbtn-libre-${id}"   onclick="setConsStatus('${id}','libre')">🟢 Libre</button>
+      <button class="status-btn"              id="consbtn-ocupado-${id}" onclick="setConsStatus('${id}','ocupado')">🔴 Ocupado</button>
+    </div>
+    <div id="consdetail-${id}" style="display:none">
+      <select class="field-select" id="cons-med-${id}" style="margin-bottom:6px" onchange="handleConsMedSelect('${id}')">${medOpts}</select>
+      <input class="field-input" id="cons-med-libre-${id}" placeholder="Nombre del médico..." style="display:none">
+    </div>
+  </div>`;
+}
+
+window.handleConsMedSelect = function(id) {
+  const sel   = document.getElementById(`cons-med-${id}`);
+  const libre = document.getElementById(`cons-med-libre-${id}`);
+  if (!sel || !libre) return;
+  libre.style.display = sel.value === '__otro__' ? 'block' : 'none';
+  if (sel.value === '__otro__') { libre.value=''; libre.focus(); }
+};
+
+window.setConsStatus = function(id, status) {
+  ['libre','ocupado'].forEach(s => {
+    const b = document.getElementById(`consbtn-${s}-${id}`); if(b) b.className='status-btn';
+  });
+  const card = document.getElementById(`conscard-${id}`);
+  const chip = document.getElementById(`conschip-${id}`);
+  const detail = document.getElementById(`consdetail-${id}`);
+  card.className = 'item-card';
+  if (status === 'libre') {
+    document.getElementById(`consbtn-libre-${id}`).className = 'status-btn active-libre';
+    chip.className='chip chip-free'; chip.textContent='🟢 Libre';
+    if (detail) detail.style.display='none';
+  } else {
+    document.getElementById(`consbtn-ocupado-${id}`).className = 'status-btn active-ocupado';
+    card.classList.add('is-busy'); chip.className='chip chip-busy'; chip.textContent='🔴 Ocupado';
+    if (detail) detail.style.display='block';
+  }
+  paseData.consultorios[id] = { status };
+};
+
+// ══════════════════════════════════════════════════════════════
+//  GENERATE PREVIEW
+// ══════════════════════════════════════════════════════════════
+
+function gv(id) { const e=document.getElementById(id); return e?e.value.trim():''; }
+function gc(id) { const e=document.getElementById(id); return e?e.checked:false; }
+
+window.generatePreview = function() {
+  const sector  = CACHE.sectores.find(s => s.id === selectedSectorId);
+  const clinica = CACHE.clinicas.find(c => c.id === selectedClinicaId);
+  const sortNat = (a,b) => a.nombre.localeCompare(b.nombre, 'es', {numeric:true});
+  const boxes   = CACHE.boxes.filter(b => b.sectorId === sector.id).sort(sortNat);
+  const cons    = CACHE.consultorios.filter(c => c.sectorId === sector.id).sort(sortNat);
+  const isIntern = sector.tipo === 'internacion';
+  const hasCons  = sector.tipo !== 'internacion';
+
+  const fecha = gv('pf-fecha'), turno = gv('pf-turno');
+  const entrega = gv('pf-entrega')||'—', recibe = gv('pf-recibe')||'—';
+  const obs = gv('pf-obs'), tareas = gv('pf-tareas');
+  const carro = !isIntern ? gc('pf-carro') : null;
+
+  const sLabel = {amnp:'AMNP',internacion:'INTERNACION',policlinica:'POLICLÍNICA'}[sector.tipo];
+  let txt = `🔄 *PASE DE GUARDIA - ${sLabel}*\n🏥 Clínica: ${clinica.nombre}\n📅 Fecha: ${fecha}\n⏰ Turno: ${turno}\n👩‍⚕️ Entrega: ${entrega}\n👨‍⚕️ Recibe: ${recibe}\n`;
+
+  if (!isIntern) txt += `\n💉 Carro de curaciones: ${carro?'✅ Listo':'❌ Pendiente'}\n`;
+
+  // Boxes summary
+  const boxLabel = isIntern ? 'HABITACIONES' : 'BOXES';
+  txt += `\n📦 *${boxLabel}*\n`;
+  const okB=[], pendB=[], ocB=[];
+  boxes.forEach(b => {
+    const st = paseData.boxes[b.id]?.status||'ok';
+    if (st==='ok') okB.push(b.nombre); else if (st==='pend') pendB.push(b.nombre); else ocB.push(b.nombre);
+  });
+  if (okB.length)  txt += `✅ ${isIntern?'Libres':'Listos'}: ${okB.join(', ')}\n`;
+  if (pendB.length) txt += `⚠️ Pendientes: ${pendB.join(', ')}\n`;
+  if (ocB.length)  txt += `👤 Ocupados: ${ocB.join(', ')}\n`;
+
+  // Pendientes detail
+  const pendBoxes = boxes.filter(b => paseData.boxes[b.id]?.status === 'pend');
+  if (pendBoxes.length) {
+    txt += `\n⚠️ *DETALLE PENDIENTES*\n`;
+    pendBoxes.forEach((b,i) => {
+      const o = gv(`box-obs-${b.id}`);
+      txt += `${i+1}. *${b.nombre}*${o?': '+o:''}\n`;
+    });
+  }
+
+  // Ocupados detail
+  const ocBoxes = boxes.filter(b => paseData.boxes[b.id]?.status === 'ocupado');
+  if (ocBoxes.length) {
+    txt += `\n📋 *DETALLE PACIENTES*\n`;
+    ocBoxes.forEach((b,i) => {
+      const inic=gv(`box-inic-${b.id}`)||'—';
+      const dx=gv(`box-dx-${b.id}`), evo=gv(`box-evo-${b.id}`);
+      const dr=isIntern?gv(`box-dr-${b.id}`):'';
+      const obsB=gv(`box-obs-ocup-${b.id}`);
+      txt += `${i+1}. *${b.nombre}:* ${inic}\n`;
+      if(dx) txt+=`   Dc: ${dx}\n`; if(dr) txt+=`   Dr: ${dr}\n`;
+      if(evo) txt+=`   ${evo}\n`;   if(obsB) txt+=`   ⚠ ${obsB}\n`;
+    });
+  }
+
+  // Consultorios
+  if (hasCons && cons.length) {
+    txt += `\n🚪 *CONSULTORIOS*\n`;
+    cons.forEach(c => {
+      const st = paseData.consultorios[c.id]?.status||'libre';
+      if (st==='libre') { txt+=`• ${c.nombre}: 🟢 Libre\n`; }
+      else {
+        const sel=document.getElementById(`cons-med-${c.id}`);
+        const libre=document.getElementById(`cons-med-libre-${c.id}`);
+        let med='';
+        if (sel?.value && sel.value!=='__otro__') {
+          const m=CACHE.medicos.find(x=>x.id===sel.value);
+          if(m) med=` — ${m.nombre}`;
+        } else if (libre?.value.trim()) { med=` — ${libre.value.trim()}`; }
+        txt+=`• ${c.nombre}: 🔴 Ocupado${med}\n`;
+      }
+    });
+    if (sector.tipo==='policlinica') {
+      const pl=gv('pf-pend-levantar'); if(pl) txt+=`• Pendientes de levantar: ${pl}\n`;
+    }
+  }
+
+  if (obs)    txt += `\n⚠️ *PENDIENTES / OBSERVACIONES*\n${obs}\n`;
+  if (tareas) txt += `\n✅ *TAREAS REALIZADAS*\n${tareas}\n`;
+
+  previewText = txt;
+  document.getElementById('preview-content').textContent = txt;
+
+  // WA links
+  const waSection = document.getElementById('wa-links-section');
+  const nums = CACHE.waNumbers.filter(w => waNumMatchesPase(w, selectedClinicaId, selectedSectorId));
+  if (nums.length) {
+    waSection.innerHTML = `<div style="font-size:10px;font-family:'Syne',sans-serif;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">ENVIAR A:</div>` +
+      nums.map(n => `
+        <a href="https://wa.me/${n.numero.replace(/\D/g,'')}?text=${encodeURIComponent(txt)}" target="_blank" style="text-decoration:none">
+          <div class="card" style="margin-bottom:8px;cursor:pointer">
+            <div class="flex items-center gap8">
+              <span>📱</span>
+              <div><div class="card-title" style="font-size:13px">${n.nombre}</div>
+                <div class="text-xs text2">${n.numero}</div></div>
+              <span style="margin-left:auto;color:#25d366;font-family:'Syne',sans-serif;font-size:12px;font-weight:700">WA ›</span>
+            </div>
+          </div>
+        </a>`).join('');
+  } else {
+    waSection.innerHTML = `<div class="text-xs text3" style="text-align:center;padding:8px 0">Sin números WA configurados para este sector</div>`;
+  }
+
+  document.getElementById('btn-save-pase').style.display = 'block';
+  document.getElementById('panel-preview').classList.add('open');
+};
+
+window.copyPreview = async function() {
+  try { await navigator.clipboard.writeText(previewText); }
+  catch { const t=document.createElement('textarea');t.value=previewText;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t); }
+  const el=document.getElementById('copy-ok'); el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),2500);
+};
+
+window.sendWA = function() {
+  const nums = CACHE.waNumbers.filter(w => waNumMatchesPase(w, selectedClinicaId, selectedSectorId));
+  const url = nums.length
+    ? `https://wa.me/${nums[0].numero.replace(/\D/g,'')}?text=${encodeURIComponent(previewText)}`
+    : `https://wa.me/?text=${encodeURIComponent(previewText)}`;
+  window.open(url,'_blank');
+};
+
+window.savePase = async function() {
+  const sector  = CACHE.sectores.find(s => s.id === selectedSectorId);
+  const clinica = CACHE.clinicas.find(c => c.id === selectedClinicaId);
+  const btn = document.getElementById('btn-save-pase');
+  btn.disabled = true; btn.textContent = '⏳ Guardando...';
+  try {
+    await fsAdd('historial', {
+      sectorId: selectedSectorId, clinicaId: selectedClinicaId,
+      sectorNombre: sector.nombre, clinicaNombre: clinica.nombre,
+      fecha: gv('pf-fecha'), turno: gv('pf-turno'),
+      entrega: gv('pf-entrega')||'—', recibe: gv('pf-recibe')||'—',
+      texto: previewText, autor: currentUser.nombre,
+    });
+    closePanel('panel-preview'); closePanel('panel-pase');
+    showScreen('historial');
+    sendPushNotification();
+  } catch(e) { alert('Error al guardar: '+e.message); }
+  finally { btn.disabled=false; btn.textContent='💾 Guardar pase'; }
+};
+
+function sendPushNotification() {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const sector  = CACHE.sectores.find(s => s.id === selectedSectorId);
+    const clinica = CACHE.clinicas.find(c => c.id === selectedClinicaId);
+    new Notification(`Nuevo pase — ${clinica?.nombre}`, { body: `${sector?.nombre}` });
+  } else if ('Notification' in window && Notification.permission !== 'denied') {
+    Notification.requestPermission();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  HISTORIAL
+// ══════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════
+//  HISTORIAL / DASHBOARD UNIFICADO (admin + nurse + enfermero)
+// ══════════════════════════════════════════════════════════════
+
+window.ndFilter = { clinica: '', sector: '', turno: '', fecha: '', texto: '' };
+const ndFilter = window.ndFilter;
+
+function renderHistorial() {
+  const list = document.getElementById('historial-list');
+  const rol  = currentUser?.rol;
+
+  // ── Stats ─────────────────────────────────────────────────────
+  const today      = new Date().toLocaleDateString('es-AR');
+  const total      = CACHE.historial.length;
+  const todayCount = CACHE.historial.filter(p=>p.fecha===today).length;
+  const weekAgo    = new Date(); weekAgo.setDate(weekAgo.getDate()-7);
+  const weekCount  = CACHE.historial.filter(p=>{
+    const parts = (p.fecha||'').split('/');
+    if (parts.length < 3) return false;
+    const [d,m,y] = parts;
+    return new Date(+y, +m-1, +d) >= weekAgo;
+  }).length;
+
+  // ── Filter ────────────────────────────────────────────────────
+  let pases = [...CACHE.historial];
+  if (ndFilter.clinica) pases = pases.filter(p=>p.clinicaId===ndFilter.clinica);
+  if (ndFilter.sector)  pases = pases.filter(p=>p.sectorId===ndFilter.sector);
+  if (ndFilter.turno)   pases = pases.filter(p=>(p.turno||'')===ndFilter.turno);
+  if (ndFilter.fecha)   pases = pases.filter(p=>p.fecha===ndFilter.fecha);
+  if (ndFilter.texto) {
+    const q = ndFilter.texto.toLowerCase();
+    pases = pases.filter(p=>
+      (p.entrega||'').toLowerCase().includes(q)||
+      (p.recibe||'').toLowerCase().includes(q)||
+      (p.sectorNombre||'').toLowerCase().includes(q)||
+      (p.clinicaNombre||'').toLowerCase().includes(q)||
+      (p.turno||'').toLowerCase().includes(q)||
+      (p.texto||'').toLowerCase().includes(q)
+    );
+  }
+
+  const isFiltered  = pases.length !== total;
+  const sectorOpts  = ndFilter.clinica
+    ? CACHE.sectores.filter(s=>s.clinicaId===ndFilter.clinica)
+    : CACHE.sectores;
+  const turnoOpts   = [...new Set(CACHE.historial.map(p=>p.turno).filter(Boolean))].sort();
+  const tipoColors  = {amnp:'var(--amnp)',internacion:'var(--intern)',policlinica:'var(--poli)'};
+  const tipoIcons   = {amnp:'🟣',internacion:'🟢',policlinica:'🟠'};
+
+  const fechaToInput = str => {
+    if (!str) return '';
+    const [d,m,y] = str.split('/');
+    return (y&&m&&d) ? `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}` : '';
+  };
+
+  // ── Si los controles ya existen, solo actualizar sus valores sin recrearlos ──
+  const filtersExist = !!document.getElementById('nd-filter-shell');
+
+  if (!filtersExist) {
+    // Primera vez: render completo (header + filtros + lista)
+    const dashTitle = rol==='nurse' ? '💙 Dashboard' : '📋 Historial';
+    const dashSub   = rol==='nurse' ? 'Vista completa de pases — solo lectura' : 'Todos los pases guardados';
+
+    list.innerHTML = `
+    <div style="margin-bottom:18px;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800">${dashTitle}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">${dashSub}</div>
+      </div>
+      ${rol==='admin' ? `<button class="btn btn-danger btn-sm" onclick="clearHistory()" style="font-size:11px">🗑 Limpiar</button>` : ''}
+    </div>
+
+    <!-- STATS -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px">
+      <div class="card" style="padding:12px;text-align:center;border-color:rgba(61,217,179,.3)">
+        <div id="stat-total" style="font-size:22px;font-family:'Syne',sans-serif;font-weight:800;color:var(--accent)">${total}</div>
+        <div style="font-size:10px;color:var(--text2);margin-top:2px;font-family:'Syne',sans-serif;letter-spacing:1px">TOTAL</div>
+      </div>
+      <div class="card" style="padding:12px;text-align:center;border-color:rgba(255,201,71,.3)">
+        <div id="stat-today" style="font-size:22px;font-family:'Syne',sans-serif;font-weight:800;color:var(--accent3)">${todayCount}</div>
+        <div style="font-size:10px;color:var(--text2);margin-top:2px;font-family:'Syne',sans-serif;letter-spacing:1px">HOY</div>
+      </div>
+      <div class="card" style="padding:12px;text-align:center;border-color:rgba(108,155,255,.3)">
+        <div id="stat-week" style="font-size:22px;font-family:'Syne',sans-serif;font-weight:800;color:var(--accent4)">${weekCount}</div>
+        <div style="font-size:10px;color:var(--text2);margin-top:2px;font-family:'Syne',sans-serif;letter-spacing:1px">7 DÍAS</div>
+      </div>
+    </div>
+
+    <!-- FILTROS — estos elementos NO se recrean en re-renders -->
+    <div id="nd-filter-shell" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:10px;font-family:'Syne',sans-serif;font-weight:700;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase">🔍 Filtros</span>
+        <button id="nd-clear-btn" onclick="Object.keys(ndFilter).forEach(k=>ndFilter[k]='');updateFiltersDOM();renderPaseList()" style="display:none;background:none;border:none;color:var(--accent2);font-size:11px;font-family:'Syne',sans-serif;font-weight:700;cursor:pointer;padding:0">✕ Limpiar</button>
+      </div>
+      <input id="nd-texto" class="field-input" placeholder="Buscar en todo el pase..." style="margin-bottom:8px;font-size:13px"
+        oninput="ndFilter.texto=this.value;renderPaseList()">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <select id="nd-clinica" class="field-select" style="font-size:13px"
+          onchange="ndFilter.clinica=this.value;ndFilter.sector='';updateSectorOpts();renderPaseList()">
+          <option value="">Todas las clínicas</option>
+          ${CACHE.clinicas.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}
+        </select>
+        <select id="nd-sector" class="field-select" style="font-size:13px"
+          onchange="ndFilter.sector=this.value;renderPaseList()">
+          <option value="">Todos los sectores</option>
+          ${CACHE.sectores.map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <select id="nd-turno" class="field-select" style="font-size:13px"
+          onchange="ndFilter.turno=this.value;renderPaseList()">
+          <option value="">Todos los turnos</option>
+          ${turnoOpts.map(t=>`<option value="${t}">${t}</option>`).join('')}
+        </select>
+        <input id="nd-fecha" type="date" class="field-input" style="font-size:13px"
+          onchange="ndFilter.fecha=this.value?new Date(this.value+'T12:00:00').toLocaleDateString('es-AR'):'';renderPaseList()">
+      </div>
+      <div id="nd-count" style="font-size:11px;margin-top:10px;font-family:'Syne',sans-serif;font-weight:600;color:var(--text3)">
+        ${total} pases en total
+      </div>
+    </div>
+
+    <!-- LISTA — este div es el único que se re-renderiza en cada filtro -->
+    <div id="nd-pase-list"></div>`;
+  } else {
+    // Re-render: actualizar stats sin tocar los inputs
+    document.getElementById('stat-total').textContent = total;
+    document.getElementById('stat-today').textContent = todayCount;
+    document.getElementById('stat-week').textContent  = weekCount;
+  }
+
+  // ── Siempre actualizar la lista y el contador ─────────────────
+  const countEl   = document.getElementById('nd-count');
+  const clearBtn  = document.getElementById('nd-clear-btn');
+  const paseListEl = document.getElementById('nd-pase-list');
+
+  if (countEl)  countEl.innerHTML  = isFiltered
+    ? `<span style="color:var(--accent3)">${pases.length} de ${total} pases</span>`
+    : `${total} pases en total`;
+  if (clearBtn) clearBtn.style.display = isFiltered ? 'block' : 'none';
+
+  if (!paseListEl) return;
+
+  if (!pases.length) {
+    paseListEl.innerHTML = `<div class="empty"><div class="empty-icon">📋</div>${total?'Sin resultados':'Sin pases guardados aún'}</div>`;
+    return;
+  }
+
+  let html = `<div style="display:flex;flex-direction:column;gap:8px">`;
+  pases.forEach(p => {
+    const s    = CACHE.sectores.find(x=>x.id===p.sectorId);
+    const tipo = s?.tipo||'amnp';
+    const icon = tipoIcons[tipo]||'📋';
+    const ago  = timeAgo(p._createdAt?.toDate?.() || p._createdAt);
+    html += `
+    <div class="card" style="padding:14px;border-left:3px solid ${tipoColors[tipo]}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
+            <span>${icon}</span>
+            <span style="font-family:'Syne',sans-serif;font-size:12px;font-weight:700">${p.sectorNombre}</span>
+            <span style="color:var(--text3);font-size:11px">·</span>
+            <span style="font-size:11px;color:var(--text2)">${p.clinicaNombre}</span>
+          </div>
+          <div style="font-size:13px;font-weight:600">${p.fecha} <span style="color:var(--text3)">·</span> <span style="font-weight:400;color:var(--text2)">Turno ${p.turno}</span></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <span style="font-size:10px;color:var(--text3)">${ago}</span>
+          ${rol==='admin' ? `<button onclick="deleteHistorial('${p.id}')" style="background:none;border:none;color:var(--accent2);cursor:pointer;font-size:15px;padding:0;line-height:1">🗑</button>` : ''}
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;display:flex;gap:16px;flex-wrap:wrap">
+        <span><span style="color:var(--accent2)">▲</span> ${p.entrega}</span>
+        <span><span style="color:var(--accent)">▼</span> ${p.recibe}</span>
+        ${p.autor ? `<span style="color:var(--text3)">Por: ${p.autor}</span>` : ''}
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-secondary btn-sm" style="flex:1;font-size:11px;padding:7px" onclick="viewPase('${p.id}')">👁 Ver pase</button>
+        <button class="btn btn-secondary btn-sm" style="flex:1;font-size:11px;padding:7px;border-color:rgba(37,211,102,.3);color:#25d366" onclick="sharePase('${p.id}')">📤 WA</button>
+      </div>
+    </div>`;
+  });
+  html += `</div>`;
+  paseListEl.innerHTML = html;
+}
+
+// Actualiza solo los <select> de sector cuando cambia la clínica
+function updateSectorOpts() {
+  const sel = document.getElementById('nd-sector');
+  if (!sel) return;
+  const opts = ndFilter.clinica
+    ? CACHE.sectores.filter(s=>s.clinicaId===ndFilter.clinica)
+    : CACHE.sectores;
+  sel.innerHTML = `<option value="">Todos los sectores</option>` +
+    opts.map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('');
+}
+
+// Sincroniza los valores del DOM con ndFilter (usado al limpiar filtros)
+function updateFiltersDOM() {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  set('nd-texto',  ndFilter.texto);
+  set('nd-clinica', ndFilter.clinica);
+  updateSectorOpts();
+  set('nd-sector',  ndFilter.sector);
+  set('nd-turno',   ndFilter.turno);
+  set('nd-fecha',   ndFilter.fecha ? (() => { const [d,m,y]=ndFilter.fecha.split('/'); return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`; })() : '');
+}
+
+// renderPaseList: solo actualiza la lista (sin tocar los filtros)
+// Se usa desde los onchange de los inputs para no perder el foco
+window.renderPaseList = function() { renderHistorial(); };
+window.updateSectorOpts = updateSectorOpts;
+window.updateFiltersDOM = updateFiltersDOM;
+window.renderHistorial = renderHistorial;
+window.renderNurseDashboard = renderHistorial;
+
+
+window.viewPase = function(id) {
+  const p = CACHE.historial.find(x=>x.id===id);
+  if (!p) return;
+  previewText = p.texto || '';
+
+  // Fill preview panel
+  document.getElementById('preview-content').textContent = p.texto || '';
+  document.getElementById('wa-links-section').innerHTML = '';
+
+  // Hide save button — viewing an existing pase, not saving a new one
+  const saveBtn = document.getElementById('btn-save-pase');
+  if (saveBtn) saveBtn.style.display = 'none';
+
+  document.getElementById('panel-preview').classList.add('open');
+};
+
+window.closeNurseViewer = function() {
+  document.getElementById('nurse-viewer').style.transform = 'translateX(100%)';
+};
+window.shareNurseViewer = function() {
+  if (navigator.share) navigator.share({text: previewText}).catch(()=>{});
+  else window.open(`https://wa.me/?text=${encodeURIComponent(previewText)}`,'_blank');
+};
+window.sharePase = function(id) {
+  const p = CACHE.historial.find(x=>x.id===id); if(!p) return;
+  if (navigator.share) navigator.share({text:p.texto}).catch(()=>{});
+  else window.open(`https://wa.me/?text=${encodeURIComponent(p.texto)}`,'_blank');
+};
+window.deleteHistorial = async function(id) {
+  if (!confirm('¿Eliminar este pase?')) return;
+  await fsDelete('historial', id);
+};
+window.clearHistory = async function() {
+  if (!confirm('¿Borrar todo el historial? Esta acción no se puede deshacer.')) return;
+  const batch = CACHE.historial.map(p => fsDelete('historial', p.id));
+  await Promise.all(batch);
+};
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const d = Date.now() - new Date(ts).getTime();
+  const m = Math.floor(d/60000);
+  if (m<1) return 'ahora'; if (m<60) return `hace ${m} min`;
+  const h = Math.floor(m/60); if (h<24) return `hace ${h}h`;
+  return `hace ${Math.floor(h/24)}d`;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  WA NUMBERS HELPERS
+// ══════════════════════════════════════════════════════════════
+
+function waNumMatchesPase(w, clinicaId, sectorId) {
+  if (w.scope==='todos') return true;
+  if ((w.clinicaIds||[]).includes(clinicaId)) return true;
+  if ((w.sectorIds||[]).includes(sectorId)) return true;
+  return false;
+}
+
+function waNumScopeLabel(w) {
+  if (w.scope==='todos') return '🌐 Todas las clínicas';
+  const cls = (w.clinicaIds||[]).map(id=>CACHE.clinicas.find(c=>c.id===id)?.nombre).filter(Boolean);
+  const scs = (w.sectorIds||[]).map(id=>{
+    const s=CACHE.sectores.find(x=>x.id===id);
+    const c=CACHE.clinicas.find(x=>x.id===s?.clinicaId);
+    return s?`${c?.nombre||'?'} › ${s.nombre}`:null;
+  }).filter(Boolean);
+  const parts=[];
+  if(cls.length) parts.push('Clínicas: '+cls.join(', '));
+  if(scs.length) parts.push('Sectores: '+scs.join(', '));
+  return parts.length?parts.join(' | '):'Sin alcance';
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ADMIN — PANEL POPULATION
+// ══════════════════════════════════════════════════════════════
+
+function populateFilterSelects() {
+  const clinicaOpts = `<option value="">Todas</option>` + CACHE.clinicas.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+  ['sector-filter-clinica','box-filter-clinica','cons-filter-clinica'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.innerHTML = clinicaOpts;
+  });
+}
+
+function populatePanel(id) {
+  populateFilterSelects();
+  switch(id) {
+    case 'panel-clinicas':    renderPanelClinicas(); break;
+    case 'panel-sectores':    renderPanelSectores(); break;
+    case 'panel-boxes':       populateBoxFilters(); renderPanelBoxes(); break;
+    case 'panel-consultorios':populateConsFilters(); renderPanelConsultorios(); break;
+    case 'panel-medicos':     renderPanelMedicos(); break;
+    case 'panel-turnos':      renderPanelTurnos(); break;
+    case 'panel-usuarios':    renderPanelUsuarios(); break;
+    case 'panel-wa-nums':     renderPanelWaNums(); break;
+  }
+}
+
+// ── CLÍNICAS
+function renderPanelClinicas() {
+  document.getElementById('panel-clinicas-body').innerHTML = CACHE.clinicas.map(c => `
+    <div class="card" style="margin-bottom:8px">
+      <div class="flex justify-between items-center">
+        <div><div class="card-title">${c.nombre}</div>
+          <div class="text-xs text3 mt4">${c.lat?`📍 ${(+c.lat).toFixed(3)}, ${(+c.lng).toFixed(3)}`:'Sin coordenadas'}</div></div>
+        <div class="card-actions">
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="editClinica('${c.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteClinica('${c.id}')">🗑</button>
+        </div>
+      </div>
+    </div>`).join('') || '<div class="empty">Sin clínicas</div>';
+}
+
+window.showAddClinica = function() {
+  openModal(`<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">Nueva Clínica</div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-nombre" placeholder="Nombre de la clínica"></div>
+    <div class="field-row">
+      <div class="field"><label class="field-label">Latitud</label><input class="field-input" id="m-lat" type="number" step="any" placeholder="-34.906"></div>
+      <div class="field"><label class="field-label">Longitud</label><input class="field-input" id="m-lng" type="number" step="any" placeholder="-56.189"></div>
+    </div>
+    <button class="btn btn-primary" onclick="saveAddClinica()">Guardar</button>`);
+};
+window.saveAddClinica = async function() {
+  const nombre=document.getElementById('m-nombre').value.trim(); if(!nombre) return;
+  await fsAdd('clinicas', {nombre, lat:parseFloat(document.getElementById('m-lat').value)||0, lng:parseFloat(document.getElementById('m-lng').value)||0});
+  closeModal(); renderPanelClinicas();
+};
+window.editClinica = function(id) {
+  const c=CACHE.clinicas.find(x=>x.id===id); if(!c) return;
+  openModal(`<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">Editar Clínica</div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-nombre" value="${c.nombre}"></div>
+    <div class="field-row">
+      <div class="field"><label class="field-label">Latitud</label><input class="field-input" id="m-lat" type="number" step="any" value="${c.lat||''}"></div>
+      <div class="field"><label class="field-label">Longitud</label><input class="field-input" id="m-lng" type="number" step="any" value="${c.lng||''}"></div>
+    </div>
+    <button class="btn btn-primary" onclick="saveEditClinica('${id}')">Guardar</button>`);
+};
+window.saveEditClinica = async function(id) {
+  await fsUpdate('clinicas', id, {nombre:document.getElementById('m-nombre').value.trim(), lat:parseFloat(document.getElementById('m-lat').value)||0, lng:parseFloat(document.getElementById('m-lng').value)||0});
+  closeModal(); renderPanelClinicas();
+};
+window.deleteClinica = async function(id) {
+  if(!confirm('¿Eliminar esta clínica?')) return;
+  await fsDelete('clinicas', id); renderPanelClinicas();
+};
+
+// ── SECTORES
+window.renderPanelSectores = function() {
+  const filt  = document.getElementById('sector-filter-clinica')?.value||'';
+  const items = (filt ? CACHE.sectores.filter(s=>s.clinicaId===filt) : CACHE.sectores)
+                .slice().sort((a,b)=>(a.orden??99)-(b.orden??99));
+  const icons = {amnp:'🟣',internacion:'🟢',policlinica:'🟠'};
+
+  const tip = items.length > 1
+    ? `<div style="font-size:11px;color:var(--text3);margin-bottom:10px;font-family:'Syne',sans-serif">↕ Usa las flechas para reordenar cómo ve los sectores el enfermero</div>` : '';
+
+  document.getElementById('panel-sectores-body').innerHTML = tip + (items.map((s,i) => {
+    const c=CACHE.clinicas.find(x=>x.id===s.clinicaId);
+    return `<div class="card" style="margin-bottom:8px">
+      <div class="flex justify-between items-center">
+        <div style="flex:1;min-width:0">
+          <div class="flex items-center gap8"><span>${icons[s.tipo]||'📋'}</span><div class="card-title">${s.nombre}</div></div>
+          <div class="text-xs text2 mt4">${c?.nombre||'—'} · ${s.tipo}</div>
+        </div>
+        <div class="card-actions" style="gap:4px">
+          <button class="btn btn-secondary btn-sm btn-icon" title="Subir" onclick="moveSector('${s.id}',-1)" ${i===0?'disabled':''}>▲</button>
+          <button class="btn btn-secondary btn-sm btn-icon" title="Bajar" onclick="moveSector('${s.id}',1)" ${i===items.length-1?'disabled':''}>▼</button>
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="editSector('${s.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteSector('${s.id}')">🗑</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty">Sin sectores</div>');
+};
+
+window.moveSector = async function(id, dir) {
+  const filt  = document.getElementById('sector-filter-clinica')?.value||'';
+  const items = (filt ? CACHE.sectores.filter(s=>s.clinicaId===filt) : CACHE.sectores)
+                .slice().sort((a,b)=>(a.orden??99)-(b.orden??99));
+  const idx   = items.findIndex(s=>s.id===id);
+  const swap  = items[idx+dir];
+  if (!swap) return;
+  const myOrd   = items[idx].orden ?? idx;
+  const swapOrd = swap.orden ?? (idx+dir);
+  await Promise.all([
+    fsUpdate('sectores', id,      {orden: swapOrd}),
+    fsUpdate('sectores', swap.id, {orden: myOrd}),
+  ]);
+  renderPanelSectores();
+};
+
+window.showAddSector = function() {
+  const cOpts = CACHE.clinicas.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+  openModal(`<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">Nuevo Sector</div>
+    <div class="field"><label class="field-label">Clínica</label><select class="field-select" id="m-clinica">${cOpts}</select></div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-nombre" placeholder="Nombre del sector"></div>
+    <div class="field"><label class="field-label">Tipo</label><select class="field-select" id="m-tipo">
+      <option value="amnp">AMNP</option><option value="internacion">Internación</option><option value="policlinica">Policlínica</option>
+    </select></div>
+    <button class="btn btn-primary" onclick="saveAddSector()">Guardar</button>`);
+};
+window.saveAddSector = async function() {
+  const nombre=document.getElementById('m-nombre').value.trim(); if(!nombre) return;
+  const maxOrden = Math.max(0, ...CACHE.sectores.map(s=>s.orden??0));
+  await fsAdd('sectores', {clinicaId:document.getElementById('m-clinica').value, nombre, tipo:document.getElementById('m-tipo').value, orden: maxOrden+1});
+  closeModal(); renderPanelSectores();
+};
+window.editSector = function(id) {
+  const s=CACHE.sectores.find(x=>x.id===id); if(!s) return;
+  const cOpts=CACHE.clinicas.map(c=>`<option value="${c.id}" ${c.id===s.clinicaId?'selected':''}>${c.nombre}</option>`).join('');
+  openModal(`<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">Editar Sector</div>
+    <div class="field"><label class="field-label">Clínica</label><select class="field-select" id="m-clinica">${cOpts}</select></div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-nombre" value="${s.nombre}"></div>
+    <div class="field"><label class="field-label">Tipo</label><select class="field-select" id="m-tipo">
+      <option value="amnp" ${s.tipo==='amnp'?'selected':''}>AMNP</option>
+      <option value="internacion" ${s.tipo==='internacion'?'selected':''}>Internación</option>
+      <option value="policlinica" ${s.tipo==='policlinica'?'selected':''}>Policlínica</option>
+    </select></div>
+    <button class="btn btn-primary" onclick="saveEditSector('${id}')">Guardar</button>`);
+};
+window.saveEditSector = async function(id) {
+  await fsUpdate('sectores',id,{clinicaId:document.getElementById('m-clinica').value, nombre:document.getElementById('m-nombre').value.trim(), tipo:document.getElementById('m-tipo').value});
+  closeModal(); renderPanelSectores();
+};
+window.deleteSector = async function(id) {
+  if(!confirm('¿Eliminar sector?')) return;
+  await fsDelete('sectores',id); renderPanelSectores();
+};
+
+// ── BOXES
+function populateBoxFilters() {
+  const cOpts=`<option value="">Todas</option>`+CACHE.clinicas.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+  document.getElementById('box-filter-clinica').innerHTML=cOpts;
+  updateBoxFilterSector();
+}
+window.updateBoxFilterSector = function() {
+  const cId=document.getElementById('box-filter-clinica').value;
+  const sects=cId?CACHE.sectores.filter(s=>s.clinicaId===cId):CACHE.sectores;
+  document.getElementById('box-filter-sector').innerHTML=`<option value="">Todos</option>`+sects.map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('');
+  renderPanelBoxes();
+};
+window.renderPanelBoxes = function() {
+  const sId=document.getElementById('box-filter-sector').value;
+  const items=sId?CACHE.boxes.filter(b=>b.sectorId===sId):CACHE.boxes;
+  document.getElementById('panel-boxes-body').innerHTML=items.map(b=>{
+    const s=CACHE.sectores.find(x=>x.id===b.sectorId);
+    const c=CACHE.clinicas.find(x=>x.id===s?.clinicaId);
+    return `<div class="card" style="margin-bottom:8px">
+      <div class="flex justify-between items-center">
+        <div><div class="card-title">${b.nombre}</div><div class="text-xs text2 mt4">${c?.nombre||'—'} › ${s?.nombre||'—'}</div></div>
+        <div class="card-actions">
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="editBox('${b.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteBox('${b.id}')">🗑</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('')||'<div class="empty">Sin boxes/habitaciones</div>';
+};
+const allSectorOpts = ()=> CACHE.sectores.map(s=>{const c=CACHE.clinicas.find(x=>x.id===s.clinicaId);return `<option value="${s.id}">${c?.nombre||'—'} › ${s.nombre}</option>`;}).join('');
+window.showAddBox = function() {
+  openModal(`<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">Nuevo Box / Habitación</div>
+    <div class="field"><label class="field-label">Sector</label><select class="field-select" id="m-sector">${allSectorOpts()}</select></div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-nombre" placeholder="Ej: Box 4"></div>
+    <button class="btn btn-primary" onclick="saveAddBox()">Guardar</button>`);
+};
+window.saveAddBox = async function() {
+  const nombre=document.getElementById('m-nombre').value.trim(); if(!nombre) return;
+  await fsAdd('boxes',{sectorId:document.getElementById('m-sector').value,nombre});
+  closeModal(); renderPanelBoxes();
+};
+window.editBox = function(id) {
+  const b=CACHE.boxes.find(x=>x.id===id); if(!b) return;
+  const sOpts=CACHE.sectores.map(s=>{const c=CACHE.clinicas.find(x=>x.id===s.clinicaId);return `<option value="${s.id}" ${s.id===b.sectorId?'selected':''}>${c?.nombre||'—'} › ${s.nombre}</option>`;}).join('');
+  openModal(`<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">Editar Box/Hab</div>
+    <div class="field"><label class="field-label">Sector</label><select class="field-select" id="m-sector">${sOpts}</select></div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-nombre" value="${b.nombre}"></div>
+    <button class="btn btn-primary" onclick="saveEditBox('${id}')">Guardar</button>`);
+};
+window.saveEditBox = async function(id) {
+  await fsUpdate('boxes',id,{sectorId:document.getElementById('m-sector').value,nombre:document.getElementById('m-nombre').value.trim()});
+  closeModal(); renderPanelBoxes();
+};
+window.deleteBox = async function(id) {
+  if(!confirm('¿Eliminar?')) return; await fsDelete('boxes',id); renderPanelBoxes();
+};
+
+// ── CONSULTORIOS
+function populateConsFilters() {
+  document.getElementById('cons-filter-clinica').innerHTML=`<option value="">Todas</option>`+CACHE.clinicas.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+  updateConsFilterSector();
+}
+window.updateConsFilterSector = function() {
+  const cId=document.getElementById('cons-filter-clinica').value;
+  const sects=cId?CACHE.sectores.filter(s=>s.clinicaId===cId):CACHE.sectores;
+  document.getElementById('cons-filter-sector').innerHTML=`<option value="">Todos</option>`+sects.map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('');
+  renderPanelConsultorios();
+};
+window.renderPanelConsultorios = function() {
+  const sId=document.getElementById('cons-filter-sector').value;
+  const items=sId?CACHE.consultorios.filter(c=>c.sectorId===sId):CACHE.consultorios;
+  const medOpts=(mId)=>`<option value="">— Sin médico —</option>`+CACHE.medicos.map(m=>`<option value="${m.id}" ${m.id===mId?'selected':''}>${m.nombre}</option>`).join('');
+  document.getElementById('panel-consultorios-body').innerHTML=items.map(c=>{
+    const s=CACHE.sectores.find(x=>x.id===c.sectorId); const cl=CACHE.clinicas.find(x=>x.id===s?.clinicaId);
+    const med=CACHE.medicos.find(x=>x.id===c.medicoId);
+    return `<div class="card" style="margin-bottom:8px">
+      <div class="flex justify-between items-center">
+        <div><div class="card-title">${c.nombre}</div>
+          <div class="text-xs text2 mt4">${cl?.nombre||'—'} › ${s?.nombre||'—'}</div>
+          ${med?`<div class="text-xs mt4" style="color:var(--accent4)">Dr: ${med.nombre}</div>`:''}
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="editConsultorio('${c.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteConsultorio('${c.id}')">🗑</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('')||'<div class="empty">Sin consultorios</div>';
+};
+window.showAddConsultorio = function() {
+  const mOpts=`<option value="">— Sin médico —</option>`+CACHE.medicos.map(m=>`<option value="${m.id}">${m.nombre}</option>`).join('');
+  openModal(`<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">Nuevo Consultorio</div>
+    <div class="field"><label class="field-label">Sector</label><select class="field-select" id="m-sector">${allSectorOpts()}</select></div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-nombre" placeholder="Ej: Consultorio 3"></div>
+    <div class="field"><label class="field-label">Médico (opcional)</label><select class="field-select" id="m-medico">${mOpts}</select></div>
+    <button class="btn btn-primary" onclick="saveAddConsultorio()">Guardar</button>`);
+};
+window.saveAddConsultorio = async function() {
+  const nombre=document.getElementById('m-nombre').value.trim(); if(!nombre) return;
+  await fsAdd('consultorios',{sectorId:document.getElementById('m-sector').value,nombre,medicoId:document.getElementById('m-medico').value});
+  closeModal(); renderPanelConsultorios();
+};
+window.editConsultorio = function(id) {
+  const c=CACHE.consultorios.find(x=>x.id===id); if(!c) return;
+  const sOpts=CACHE.sectores.map(s=>{const cl=CACHE.clinicas.find(x=>x.id===s.clinicaId);return `<option value="${s.id}" ${s.id===c.sectorId?'selected':''}>${cl?.nombre||'—'} › ${s.nombre}</option>`;}).join('');
+  const mOpts=`<option value="">— Sin médico —</option>`+CACHE.medicos.map(m=>`<option value="${m.id}" ${m.id===c.medicoId?'selected':''}>${m.nombre}</option>`).join('');
+  openModal(`<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">Editar Consultorio</div>
+    <div class="field"><label class="field-label">Sector</label><select class="field-select" id="m-sector">${sOpts}</select></div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-nombre" value="${c.nombre}"></div>
+    <div class="field"><label class="field-label">Médico</label><select class="field-select" id="m-medico">${mOpts}</select></div>
+    <button class="btn btn-primary" onclick="saveEditConsultorio('${id}')">Guardar</button>`);
+};
+window.saveEditConsultorio = async function(id) {
+  await fsUpdate('consultorios',id,{sectorId:document.getElementById('m-sector').value,nombre:document.getElementById('m-nombre').value.trim(),medicoId:document.getElementById('m-medico').value});
+  closeModal(); renderPanelConsultorios();
+};
+window.deleteConsultorio = async function(id) {
+  if(!confirm('¿Eliminar?')) return; await fsDelete('consultorios',id); renderPanelConsultorios();
+};
+
+// ── MÉDICOS
+function renderPanelMedicos() {
+  document.getElementById('panel-medicos-body').innerHTML=CACHE.medicos.map(m=>`
+    <div class="card" style="margin-bottom:8px">
+      <div class="flex justify-between items-center">
+        <div class="card-title">👨‍⚕️ ${m.nombre}</div>
+        <div class="card-actions">
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="editMedico('${m.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteMedico('${m.id}')">🗑</button>
+        </div>
+      </div>
+    </div>`).join('')||'<div class="empty">Sin médicos</div>';
+}
+window.showAddMedico = function() {
+  openModal(`<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">Nuevo Médico</div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-nombre" placeholder="Dr. Apellido"></div>
+    <button class="btn btn-primary" onclick="saveAddMedico()">Guardar</button>`);
+};
+window.saveAddMedico = async function() {
+  const nombre=document.getElementById('m-nombre').value.trim(); if(!nombre) return;
+  await fsAdd('medicos',{nombre}); closeModal(); renderPanelMedicos();
+};
+window.editMedico = function(id) {
+  const m=CACHE.medicos.find(x=>x.id===id); if(!m) return;
+  openModal(`<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">Editar Médico</div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-nombre" value="${m.nombre}"></div>
+    <button class="btn btn-primary" onclick="saveEditMedico('${id}')">Guardar</button>`);
+};
+window.saveEditMedico = async function(id) {
+  await fsUpdate('medicos',id,{nombre:document.getElementById('m-nombre').value.trim()});
+  closeModal(); renderPanelMedicos();
+};
+window.deleteMedico = async function(id) {
+  if(!confirm('¿Eliminar?')) return; await fsDelete('medicos',id); renderPanelMedicos();
+};
+
+// ── TURNOS
+function renderPanelTurnos() {
+  const tipos = ['amnp','internacion','policlinica'];
+  const labels = {amnp:'AMNP',internacion:'Internación',policlinica:'Policlínica'};
+  document.getElementById('panel-turnos-body').innerHTML=tipos.map(tipo=>`
+    <div class="section-head"><div class="section-head-title">${labels[tipo]}</div></div>
+    ${CACHE.turnos.filter(t=>t.tipo===tipo).map(t=>`
+      <div class="card" style="margin-bottom:6px">
+        <div class="flex justify-between items-center">
+          <div class="card-title">⏰ ${t.nombre}</div>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteTurno('${t.id}')">🗑</button>
+        </div>
+      </div>`).join('')}`).join('');
+}
+window.showAddTurno = function() {
+  openModal(`<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">Nuevo Turno</div>
+    <div class="field"><label class="field-label">Tipo de sector</label><select class="field-select" id="m-tipo">
+      <option value="amnp">AMNP</option><option value="internacion">Internación</option><option value="policlinica">Policlínica</option>
+    </select></div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-nombre" placeholder="Ej: Vespertino"></div>
+    <button class="btn btn-primary" onclick="saveAddTurno()">Guardar</button>`);
+};
+window.saveAddTurno = async function() {
+  const nombre=document.getElementById('m-nombre').value.trim(); if(!nombre) return;
+  await fsAdd('turnos',{tipo:document.getElementById('m-tipo').value,nombre});
+  closeModal(); renderPanelTurnos();
+};
+window.deleteTurno = async function(id) {
+  if(!confirm('¿Eliminar?')) return; await fsDelete('turnos',id); renderPanelTurnos();
+};
+
+// ── USUARIOS
+function renderPanelUsuarios() {
+  const rIcons={admin:'🔑',nurse:'💙',enfermero:'🩺'};
+  const rClass={admin:'badge-role-admin',nurse:'badge-role-nurse',enfermero:'badge-role-enfermero'};
+  document.getElementById('panel-usuarios-body').innerHTML=CACHE.usuarios.map(u=>`
+    <div class="card" style="margin-bottom:8px">
+      <div class="flex justify-between items-center">
+        <div>
+          <div class="flex items-center gap8"><div class="card-title">${u.nombre}</div>
+            <span class="badge ${rClass[u.rol]}">${rIcons[u.rol]} ${u.rol}</span></div>
+          <div class="text-xs text3 mt4">@${u.username}</div>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="editUsuario('${u.id}')">✏️</button>
+          ${u.id!==currentUser?.id?`<button class="btn btn-danger btn-sm btn-icon" onclick="deleteUsuario('${u.id}')">🗑</button>`:''}
+        </div>
+      </div>
+    </div>`).join('')||'<div class="empty">Sin usuarios</div>';
+}
+window.showAddUsuario = function() {
+  openModal(`<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">Nuevo Usuario</div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-nombre" placeholder="Nombre completo"></div>
+    <div class="field"><label class="field-label">Usuario</label><input class="field-input" id="m-user" placeholder="usuario123" autocomplete="off"></div>
+    <div class="field"><label class="field-label">Contraseña</label><input class="field-input" id="m-pass" type="password" autocomplete="new-password"></div>
+    <div class="field"><label class="field-label">Rol</label><select class="field-select" id="m-rol">
+      <option value="enfermero">🩺 Enfermero</option>
+      <option value="nurse">💙 Nurse</option>
+      <option value="admin">🔑 Admin</option>
+    </select></div>
+    <button class="btn btn-primary" onclick="saveAddUsuario()">Guardar</button>`);
+};
+window.saveAddUsuario = async function() {
+  const nombre=document.getElementById('m-nombre').value.trim();
+  const username=document.getElementById('m-user').value.trim();
+  const password=document.getElementById('m-pass').value;
+  if(!nombre||!username||!password) return;
+  await fsAdd('usuarios',{nombre,username,password,rol:document.getElementById('m-rol').value});
+  closeModal(); renderPanelUsuarios();
+};
+window.editUsuario = function(id) {
+  const u=CACHE.usuarios.find(x=>x.id===id); if(!u) return;
+  openModal(`<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">Editar Usuario</div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-nombre" value="${u.nombre}"></div>
+    <div class="field"><label class="field-label">Usuario</label><input class="field-input" id="m-user" value="${u.username}" autocomplete="off"></div>
+    <div class="field"><label class="field-label">Nueva contraseña (vacío = sin cambio)</label><input class="field-input" id="m-pass" type="password" placeholder="••••••••" autocomplete="new-password"></div>
+    <div class="field"><label class="field-label">Rol</label><select class="field-select" id="m-rol">
+      <option value="enfermero" ${u.rol==='enfermero'?'selected':''}>🩺 Enfermero</option>
+      <option value="nurse" ${u.rol==='nurse'?'selected':''}>💙 Nurse</option>
+      <option value="admin" ${u.rol==='admin'?'selected':''}>🔑 Admin</option>
+    </select></div>
+    <button class="btn btn-primary" onclick="saveEditUsuario('${id}')">Guardar</button>`);
+};
+window.saveEditUsuario = async function(id) {
+  const data={nombre:document.getElementById('m-nombre').value.trim(),username:document.getElementById('m-user').value.trim(),rol:document.getElementById('m-rol').value};
+  const p=document.getElementById('m-pass').value; if(p) data.password=p;
+  await fsUpdate('usuarios',id,data); closeModal(); renderPanelUsuarios();
+};
+window.deleteUsuario = async function(id) {
+  if(!confirm('¿Eliminar usuario?')) return; await fsDelete('usuarios',id); renderPanelUsuarios();
+};
+
+// ── WA NUMBERS
+function renderPanelWaNums() {
+  document.getElementById('panel-wa-nums-body').innerHTML=CACHE.waNumbers.map(w=>`
+    <div class="card" style="margin-bottom:8px">
+      <div class="flex justify-between items-center">
+        <div style="flex:1;min-width:0">
+          <div class="card-title">📱 ${w.nombre}</div>
+          <div class="text-xs text2 mt4">${w.numero}</div>
+          <div class="text-xs mt4" style="color:var(--accent3)">${waNumScopeLabel(w)}</div>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="editWaNum('${w.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteWaNum('${w.id}')">🗑</button>
+        </div>
+      </div>
+    </div>`).join('')||'<div class="empty">Sin números configurados</div>';
+}
+function buildWaNumModal(w) {
+  const isEdit=!!w;
+  const cChecks=CACHE.clinicas.map(c=>`<div class="check-row"><input type="checkbox" id="m-wa-c-${c.id}" value="${c.id}" ${(w?.clinicaIds||[]).includes(c.id)?'checked':''}><label for="m-wa-c-${c.id}">${c.nombre}</label></div>`).join('');
+  const sChecks=CACHE.sectores.map(s=>{const cl=CACHE.clinicas.find(x=>x.id===s.clinicaId);return `<div class="check-row"><input type="checkbox" id="m-wa-s-${s.id}" value="${s.id}" ${(w?.sectorIds||[]).includes(s.id)?'checked':''}><label for="m-wa-s-${s.id}"><span style="color:var(--text3)">${cl?.nombre||'?'} ›</span> ${s.nombre}</label></div>`;}).join('');
+  const isTodos=w?.scope==='todos';
+  return `<div class="font-syne fw7" style="font-size:16px;margin-bottom:16px">${isEdit?'Editar':'Nuevo'} Número WhatsApp</div>
+    <div class="field"><label class="field-label">Nombre</label><input class="field-input" id="m-wa-nombre" placeholder="Ej: Nurse García" value="${w?.nombre||''}"></div>
+    <div class="field"><label class="field-label">Número (con código país, sin + ni espacios)</label><input class="field-input" id="m-wa-numero" type="tel" placeholder="59899xxxxxx" value="${w?.numero||''}"></div>
+    <div class="field"><label class="field-label">Alcance</label>
+      <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);cursor:pointer;margin-bottom:8px">
+        <input type="radio" name="m-wa-scope" value="todos" id="m-wa-scope-todos" ${isTodos?'checked':''} onchange="toggleWaScope()">
+        <span>🌐 <strong>Todas</strong> las clínicas y sectores</span></label>
+      <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);cursor:pointer">
+        <input type="radio" name="m-wa-scope" value="seleccion" id="m-wa-scope-sel" ${!isTodos?'checked':''} onchange="toggleWaScope()">
+        <span>✅ Seleccionar específicos</span></label>
+    </div>
+    <div id="m-wa-scope-detail" style="${isTodos?'display:none':''}">
+      <div class="field"><label class="field-label">Clínicas completas</label>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:4px 12px">${cChecks}</div></div>
+      <div class="field"><label class="field-label">Sectores específicos</label>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:4px 12px">${sChecks}</div></div>
+    </div>
+    <button class="btn btn-primary" onclick="${isEdit?`saveEditWaNum('${w.id}')`:'saveAddWaNum()'}">Guardar</button>`;
+}
+window.toggleWaScope = function() {
+  const todos=document.getElementById('m-wa-scope-todos')?.checked;
+  const d=document.getElementById('m-wa-scope-detail'); if(d) d.style.display=todos?'none':'block';
+};
+function getWaModalData() {
+  const nombre=document.getElementById('m-wa-nombre').value.trim();
+  const numero=document.getElementById('m-wa-numero').value.trim();
+  if(!nombre||!numero) return null;
+  const todos=document.getElementById('m-wa-scope-todos')?.checked;
+  return {nombre,numero,scope:todos?'todos':'seleccion',
+    clinicaIds:todos?[]:CACHE.clinicas.filter(c=>document.getElementById(`m-wa-c-${c.id}`)?.checked).map(c=>c.id),
+    sectorIds:todos?[]:CACHE.sectores.filter(s=>document.getElementById(`m-wa-s-${s.id}`)?.checked).map(s=>s.id)};
+}
+window.showAddWaNum   = function() { openModal(buildWaNumModal(null)); };
+window.editWaNum      = function(id) { openModal(buildWaNumModal(CACHE.waNumbers.find(x=>x.id===id))); };
+window.saveAddWaNum   = async function() { const d=getWaModalData(); if(!d) return; await fsAdd('waNumbers',d); closeModal(); renderPanelWaNums(); };
+window.saveEditWaNum  = async function(id) { const d=getWaModalData(); if(!d) return; await fsUpdate('waNumbers',id,d); closeModal(); renderPanelWaNums(); };
+window.deleteWaNum    = async function(id) { if(!confirm('¿Eliminar?')) return; await fsDelete('waNumbers',id); renderPanelWaNums(); };
+
+// ── ENTER on login
+document.getElementById('login-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+// ── BOOT
+boot();
+</script>
+</body>
+</html>

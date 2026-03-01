@@ -1,0 +1,12 @@
+[build]
+  publish = "."
+
+[[redirects]]
+  from = "/"
+  to = "/guardiapp_v13_3.html"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/guardiapp_v13_3.html"
+  status = 200
