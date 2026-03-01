@@ -146,6 +146,7 @@ function chW(d){
   renderCal();
 }
 function setSF(btn,s){cSF=s;document.querySelectorAll('#sfBtns .btn').forEach(b=>{b.className='btn bg sm';});btn.className='btn bp sm';renderCal();}
+function isMobileSchedule(){ return window.matchMedia('(max-width: 700px)').matches; }
 
 function getCambioSideName(c, side){
   if(side==='sol'){
@@ -217,11 +218,78 @@ function renderCal(){
   const rng=validDays.length?`${Math.min(...validDays)} al ${Math.max(...validDays)}`:'Sin días';
   document.getElementById('weekLbl').textContent=`Semana ${cWeek+1} — ${rng} ${getMonthLabel(year,month)}`;
   const tbl=document.getElementById('calTbl');
+  const mob=document.getElementById('calMobile');
+  if(!SGRP.length){
+    if(tbl) tbl.innerHTML='<thead></thead><tbody><tr><td colspan="8" style="color:var(--t3);padding:30px;text-align:center">Cargando planificación...</td></tr></tbody>';
+    if(mob) mob.innerHTML='<div style="color:var(--t3);padding:20px;text-align:center">Cargando planificación...</div>';
+    return;
+  }
+  const grps=cSF==='all'?SGRP:SGRP.filter(g=>g.sector===cSF);
+  const resolveCodeForDay=(emp,empId,d,dateStr,wd)=>{
+    let code=getShiftChange(emp,dateStr);
+    if(!code){
+      if(empId && dbLoaded) code=getTurnoFecha(empId,dateStr);
+      if(!code){
+        const sc=WK[emp]||[];
+        code=sc[wd];
+      }
+    }
+    const ov=getApprovedTradeOverride(emp,dateStr);
+    if(ov?.code) code=ov.code;
+    const licOv=getLicenciaCodeForDate(empId,dateStr);
+    if(licOv?.code) code=licOv.code;
+    return {code, ov, licOv};
+  };
+
+  if(isMobileSchedule()){
+    if(tbl) tbl.parentElement.style.display='none';
+    if(mob) mob.classList.remove('gone');
+    let mh='';
+    grps.forEach(grp=>{
+      mh+=`<div class="msec">${grp.sector}</div>`;
+      grp.emps.forEach(emp=>{
+        const empRec=EMPS.find(e=>e.name===emp);
+        const empId=empRec?.id||null;
+        let monthWork=0;
+        for(let d=1;d<=meta.daysInMonth;d++){
+          const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          const wd=(new Date(Date.UTC(year,month,d)).getUTCDay()+6)%7;
+          const {code}=resolveCodeForDay(emp,empId,d,dateStr,wd);
+          if(isW(code)) monthWork++;
+        }
+        const is7=monthWork>=7;
+        const ed=EMPS.find(e=>e.name===emp);
+        const dc=ed?.status==='absent'?'dr2':ed?.status==='lar'?'da':'dg';
+        mh+=`<div class="mcard">
+          <div class="mhead"><span><span class="dot ${dc}"></span>${emp}</span>${is7?'<span class="chip cr">7ª</span>':''}</div>
+          <div class="mdays">`;
+        cells.forEach(c=>{
+          if(!c.valid){ mh+='<button class="mday off" disabled>—</button>'; return; }
+          const d=c.day;
+          const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          const wd=c.col;
+          const {code,ov,licOv}=resolveCodeForDay(emp,empId,d,dateStr,wd);
+          const cls=is7&&code&&isW(code)?'s7':shCls(code);
+          const tip=licOv?.title||ov?.title||'';
+          mh+=`<button class="mday ${c.wk?'wk':''}" onclick="editC('${emp}',${d},'${code||''}')">
+            <span class="mab">${DAB[c.col]}</span>
+            <span class="mnum">${d}</span>
+            ${code?`<span class="sh ${cls}" title="${tip}">${code}</span>`:'<span class="mempty2">—</span>'}
+          </button>`;
+        });
+        mh+='</div></div>';
+      });
+    });
+    if(mob) mob.innerHTML=mh || '<div style="color:var(--t3);padding:20px;text-align:center">Sin datos</div>';
+    return;
+  }else{
+    if(tbl) tbl.parentElement.style.display='';
+    if(mob){ mob.classList.add('gone'); mob.innerHTML=''; }
+  }
+
   let html='<thead><tr><th class="thn">Sector / Funcionario</th>';
   cells.forEach(c=>{const ab=DAB[c.col];html+=`<th class="${c.wk?'thw':''}"><div style="font-size:9px">${ab}</div><div style="font-family:var(--ff-mono);font-size:12px;font-weight:600">${c.valid?c.day:'—'}</div></th>`;});
   html+='</tr></thead><tbody>';
-  if(!SGRP.length){tbl.innerHTML='<thead></thead><tbody><tr><td colspan="8" style="color:var(--t3);padding:30px;text-align:center">Cargando planificación...</td></tr></tbody>';return;}
-  const grps=cSF==='all'?SGRP:SGRP.filter(g=>g.sector===cSF);
   grps.forEach(grp=>{
     html+=`<tr class="csr"><td colspan="${cells.length+1}">${grp.sector}</td></tr>`;
     grp.emps.forEach(emp=>{
@@ -254,18 +322,7 @@ function renderCal(){
         const d=c.day;
         const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         const wd=c.col;
-        let code=getShiftChange(emp,dateStr);
-        if(!code){
-          if(empId && dbLoaded) code=getTurnoFecha(empId,dateStr);
-          if(!code){
-            const sc=WK[emp]||[];
-            code=sc[wd];
-          }
-        }
-        const ov=getApprovedTradeOverride(emp,dateStr);
-        if(ov?.code) code=ov.code;
-        const licOv=getLicenciaCodeForDate(empId,dateStr);
-        if(licOv?.code) code=licOv.code;
+        const {code,ov,licOv}=resolveCodeForDay(emp,empId,d,dateStr,wd);
         const wk=c.wk;
         const cls=is7&&code&&isW(code)?'s7':shCls(code);
         const isTradeApproved = !!ov && !licOv;
@@ -1946,6 +2003,18 @@ if(window.GApp?.registerLayer){
     renderHR,
     initEJ,
     toast,
+  });
+}
+
+if(!window.__scheduleResizeBound){
+  window.__scheduleResizeBound=true;
+  let rt=null;
+  window.addEventListener('resize', ()=>{
+    clearTimeout(rt);
+    rt=setTimeout(()=>{
+      const v=document.getElementById('v-schedule');
+      if(v && v.classList.contains('act')) renderCal();
+    },120);
   });
 }
 // EMAIL PREVIEW

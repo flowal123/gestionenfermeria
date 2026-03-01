@@ -220,8 +220,27 @@ function doLogin(){
 }
 
 function doLogout(){
+  closeMobileNav();
   document.getElementById('ls').classList.remove('gone');
   document.getElementById('app').classList.add('gone');
+}
+
+function isMobileNav(){
+  return window.matchMedia('(max-width: 900px)').matches;
+}
+
+function openMobileNav(){
+  if(!isMobileNav()) return;
+  document.body.classList.add('mnav-open');
+}
+
+function closeMobileNav(){
+  document.body.classList.remove('mnav-open');
+}
+
+function toggleMobileNav(){
+  if(!isMobileNav()) return;
+  document.body.classList.toggle('mnav-open');
 }
 
 function applyPerms(){
@@ -251,6 +270,7 @@ const PTITLES={dashboard:'Dashboard General',schedule:'Planificación Mensual',m
 
 function go(id){
   if(!PERMS[cRole].includes(id)){toast('wa','Acceso restringido','Sin permiso para esta sección.');return;}
+  closeMobileNav();
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('act'));
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('act'));
   const vEl=document.getElementById('v-'+id);
@@ -384,11 +404,19 @@ function getCurrFuncionario(){
 
 
 function initAll(){
+  closeMobileNav();
   renderGenHistory();
   populateSendMes();
   renderCov();renderDashAlerts();renderEmps();renderSubs2();renderCompMat();
   renderLics();renderLAR();renderTrades();renderAlerts();renderUsers();renderHR();
   populateSels();
+}
+
+if(!window.__mobileNavCloseBound){
+  window.__mobileNavCloseBound=true;
+  window.addEventListener('resize', ()=>{
+    if(!isMobileNav()) closeMobileNav();
+  });
 }
 
 function populateSels(){

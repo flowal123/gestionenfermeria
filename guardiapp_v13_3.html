@@ -60,6 +60,7 @@
 
   <div class="main">
     <div class="topbar">
+      <button class="btn bg sm mnav-btn" id="mNavBtn" onclick="toggleMobileNav()">☰ Menú</button>
       <div class="tb-t" id="pgTitle">Dashboard</div>
       <div id="dbStatus" style="display:none;font-size:10px;color:var(--green);font-family:var(--ff-mono);display:flex;align-items:center;gap:5px">
         <span style="width:7px;height:7px;background:var(--green);border-radius:50%;display:inline-block;box-shadow:0 0 5px var(--green)"></span>DB online
@@ -115,6 +116,7 @@
     <span><span class="sh sM">M</span> Mañana</span><span><span class="sh sT">T</span> Tarde</span><span><span class="sh sN">N</span> Noche</span><span><span class="sh sV">V</span> Vesp.</span><span><span class="sh sLAR">LAR</span> Lic.anual</span><span><span class="sh sF">F</span> Falta</span><span><span class="sh sLXC">LXC</span> Cambio aprobado</span><span><span class="sh s7">7ª</span> 7ª guardia ⚠</span>
   </div>
   <div class="cw"><table class="ctbl" id="calTbl"></table></div>
+  <div id="calMobile" class="gone"></div>
 </div>
 
 <!-- MY SCHEDULE (contenido dinámico por rol) -->
@@ -378,6 +380,7 @@
     </div><!-- /content -->
   </div><!-- /main -->
 </div><!-- /app -->
+<div id="mNavOverlay" class="mnav-ov" onclick="closeMobileNav()"></div>
 
 <!-- MODALS -->
 <div class="ov" id="shiftM"><div class="modal">
