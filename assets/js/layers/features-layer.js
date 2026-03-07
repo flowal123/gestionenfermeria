@@ -1019,6 +1019,43 @@ function filterT(id,val){document.querySelectorAll(`#${id} tr`).forEach(r=>{r.st
 // ........................................................
 // LICENSES
 // ........................................................
+function getSuplenteSugeridos(lic){
+  if(!dbLoaded || !DB.suplentes.length) return [];
+  const from=new Date((lic.fecha_desde||lic.from)+'T12:00:00');
+  const to=new Date((lic.fecha_hasta||lic.to)+'T12:00:00');
+  const empClinica=lic.funcionario?.clinica?.nombre||lic.clinica||'';
+  const empSector=lic.funcionario?.sector?.nombre||lic.sec||lic.sector||'';
+  return DB.suplentes
+    .filter(s=>s.activo!==false)
+    .filter(s=>{
+      // Check no conflicting turno in date range
+      return !DB.turnos.some(t=>{
+        if(t.funcionario_id!==s.id) return false;
+        const td=new Date(t.fecha+'T12:00:00');
+        return td>=from && td<=to && isW(t.codigo);
+      });
+    })
+    .map(s=>{
+      const sc=s.clinica?.nombre||'';
+      const ss=s.sector?.nombre||'';
+      const sameSector=ss===empSector||sc===empClinica?2:0;
+      const guardias=DB.turnos.filter(t=>t.funcionario_id===s.id&&isW(t.codigo)).length;
+      return {...s, _score:sameSector - guardias*0.01};
+    })
+    .sort((a,b)=>b._score-a._score)
+    .slice(0,3);
+}
+
+async function asignarSuplenteLic(licId, supId, supNombre){
+  if(!sb) return;
+  const {error}=await sb.from('licencias').update({suplente_id:supId}).eq('id',licId);
+  if(error){ toast('er','Error','No se pudo asignar el suplente'); return; }
+  const l=DB.licencias.find(x=>x.id===licId);
+  if(l){ l.suplente_id=supId; l.suplente={apellido:supNombre.split(', ')[0],nombre:supNombre.split(', ')[1]||''}; }
+  renderLics();
+  toast('ok','Suplente asignado',`${supNombre} — pendiente aprobación supervisora`);
+}
+
 function renderLics(){
   const body=document.getElementById('licBody');if(!body)return;
   // Use DB data if available, else use LIC_DATA state
@@ -1039,6 +1076,13 @@ function renderLics(){
     const fmtDate = d=>{ try{ return new Date(d+'T12:00:00').toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}); }catch(e){return d||'—';} };
     const canApprove = ['admin','supervisor'].includes(cRole) && l.st==='pendiente';
     const canAssign  = ['admin','supervisor'].includes(cRole) && l.st==='uncovered';
+    // Suplente suggestions for uncovered licencias
+    const dbLic = dbLoaded ? DB.licencias.find(x=>x.id===l.id) : null;
+    const sugs = (canAssign && dbLic) ? getSuplenteSugeridos(dbLic) : [];
+    const sugHtml = sugs.length
+      ? '<div style="margin-top:4px;font-size:10px;color:var(--t2)">Sugeridos: '+
+        sugs.map(s=>{const nm=fNombre(s);return `<button class="btn bs xs" style="font-size:10px" onclick="asignarSuplenteLic(${dbLic.id},'${s.id}','${nm.replace(/'/g,"\\'")}')">👤 ${nm}</button>`;}).join('')+
+        '</div>' : '';
     return `<tr>
       <td><strong>${l.emp}</strong></td><td style="font-size:11px">${l.sec||'—'}</td>
       <td><span class="chip ${tc}">${l.type}</span></td>
@@ -1049,6 +1093,7 @@ function renderLics(){
         <span class="chip ${sc}" id="licSt${idx}">${sl}</span>
         ${canApprove?`<button class="btn bs xs" onclick="approveLic(${idx})">✓ Aprobar</button><button class="btn bd xs" onclick="rejectLic(${idx})">✕ Rechazar</button>`:''}
         ${canAssign?`<button class="btn bp xs" id="licBtn${idx}" onclick="openAssignFromLic(${idx},'${(l.sec||l.sector||'').replace(/'/g,'&#39;')}','${l.from}')">Asignar suplente</button>`:''}
+        ${sugHtml}
       </td>
     </tr>`;
   }).join('');
@@ -1886,41 +1931,101 @@ function populateGenMesOptions(){
   if(prev && [...sel.options].some(o=>o.value===prev)) sel.value=prev;
 }
 
-function startGen(){
-  const mesVal = document.getElementById('genMes')?.value||'Febrero 2026';
-  const parsed=parseMesLabel(mesVal)||{year:2026,month:1};
-  // Check if already generated
-  if(GENS.find(g=>g.mes===mesVal&&g.estado!=='cancelada')){
-    toast('wa','Ya existe','Este mes ya fue generado. Buscalo en el historial para validar.');
-    return;
+async function startGen(){
+  if(!dbLoaded || !DB.funcionarios.length){
+    toast('wa','Sin datos','Sincronizá la base de datos primero.'); return;
   }
+  const mesVal=document.getElementById('genMes')?.value||'Marzo 2026';
+  const parsed=parseMesLabel(mesVal)||{year:2026,month:2};
+  if(GENS.find(g=>g.mes===mesVal&&g.estado!=='cancelada')){
+    toast('wa','Ya existe','Este mes ya fue generado. Buscalo en el historial para validar.'); return;
+  }
+
   document.getElementById('genIdle').style.display='none';
   document.getElementById('genRun').classList.remove('gone');
-  const steps_gen = GSTEPS.slice(0,8); // no incluir envio de emails — eso va luego de validar
+  const steps_gen=GSTEPS.slice(0,8);
   const sd=document.getElementById('genSteps');
   sd.innerHTML=steps_gen.map((_,i)=>`<div class="genstep" id="gs${i}"><span class="gsic">○</span>${_}</div>`).join('');
-  let cur=0;
-  const next=()=>{
-    if(cur>0){const p=document.getElementById('gs'+(cur-1));if(p){p.className='genstep done';p.querySelector('.gsic').textContent='✓';}}
-    if(cur<steps_gen.length){
-      const el=document.getElementById('gs'+cur);
-      if(el){el.className='genstep run';el.querySelector('.gsic').textContent='⟳';}
-      document.getElementById('genStatus').textContent=steps_gen[cur]+'...';
-      cur++;setTimeout(next,700);
-    }else{
-      document.getElementById('genRun').classList.add('gone');
-      document.getElementById('genIdle').style.display='block';
-      // Add to history as draft (pending validation)
-      DRAFT_GEN = {id:Date.now(), mes:mesVal, mesNum:parsed.month+1, anio:parsed.year, func:EMPS.length||47, alertas:2, estado:'borrador', fecha:new Date().toLocaleDateString('es-UY')};
-      GENS.unshift(DRAFT_GEN);
-      renderGenHistory();
-      populateSendMes();
-      populateGenMesOptions();
-      toast('ok',`${mesVal} generado — pendiente de validación`,
-        'Revisá la planilla, editá si necesario, luego aprobá para enviar agendas.');
-    }
+
+  const markStep=i=>{
+    if(i>0){const p=document.getElementById(`gs${i-1}`);if(p){p.className='genstep done';p.querySelector('.gsic').textContent='✓';}}
+    const el=document.getElementById(`gs${i}`);
+    if(el){el.className='genstep run';el.querySelector('.gsic').textContent='⟳';}
+    document.getElementById('genStatus').textContent=(steps_gen[i]||'Procesando')+'...';
   };
-  next();
+
+  const {year,month}=parsed;
+  const daysInMonth=new Date(Date.UTC(year,month+1,0)).getUTCDate();
+
+  function daysBetween(refStr,dateStr){
+    return Math.round((new Date(dateStr+'T12:00:00')-new Date(refStr+'T12:00:00'))/86400000);
+  }
+  function isWorkDay(patron,cicloRef,dateStr){
+    const wd=(new Date(dateStr+'T12:00:00').getUTCDay()+6)%7; // 0=Lun,6=Dom
+    if(patron==='4x1'){
+      if(!cicloRef) return wd<5;
+      const off=((daysBetween(cicloRef,dateStr)%5)+5)%5;
+      return off<4;
+    }
+    if(patron==='6x1'){
+      if(!cicloRef) return wd<6;
+      const off=((daysBetween(cicloRef,dateStr)%7)+7)%7;
+      return off<6;
+    }
+    return wd<5; // LV: Lun-Vie
+  }
+
+  markStep(0);
+  const records=[];
+  let alert7=0;
+  const chunkSize=Math.ceil(DB.funcionarios.length/6)||1;
+
+  for(let fi=0;fi<DB.funcionarios.length;fi++){
+    if(fi>0 && fi%chunkSize===0) markStep(Math.min(Math.floor(fi/chunkSize),5));
+    const f=DB.funcionarios[fi];
+    const patron=f.patron||'LV';
+    const cicloRef=f.ciclo_ref||null;
+    const code=f.turno_fijo||'M';
+    const sectorId=f.sector_id||null;
+    let consec=0; let bad7=false;
+    for(let d=1;d<=daysInMonth;d++){
+      const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const lic=getLicenciaCodeForDate(f.id,dateStr);
+      if(lic){consec=0;continue;}
+      if(isWorkDay(patron,cicloRef,dateStr)){
+        records.push({funcionario_id:f.id,fecha:dateStr,codigo:code,sector_id:sectorId});
+        consec++; if(consec>=7) bad7=true;
+      } else {
+        consec=0;
+      }
+    }
+    if(bad7) alert7++;
+  }
+
+  // Batch upsert in chunks of 500
+  markStep(6);
+  const BATCH=500;
+  for(let i=0;i<records.length;i+=BATCH){
+    const ok=await saveTurnosBatch(records.slice(i,i+BATCH));
+    if(!ok) break;
+  }
+
+  markStep(7);
+  await new Promise(r=>setTimeout(r,300));
+  for(let i=0;i<8;i++){const p=document.getElementById(`gs${i}`);if(p){p.className='genstep done';p.querySelector('.gsic').textContent='✓';}}
+  document.getElementById('genRun').classList.add('gone');
+  document.getElementById('genIdle').style.display='block';
+
+  DRAFT_GEN={id:Date.now(),mes:mesVal,mesNum:month+1,anio:year,
+    func:DB.funcionarios.length,alertas:alert7,estado:'borrador',
+    fecha:new Date().toLocaleDateString('es-UY')};
+  GENS.unshift(DRAFT_GEN);
+  renderGenHistory();
+  populateSendMes();
+  populateGenMesOptions();
+  await loadDB();
+  toast('ok',`${mesVal} generado — ${records.length} turnos · ${alert7} alertas 7ª guardia`,
+    'Revisá la planilla, editá si necesario, luego aprobá para enviar agendas.');
 }
 
 function renderGenHistory(){
@@ -2658,6 +2763,12 @@ async function saveLic(){
   if(actTab) swTab(actTab,'tLicA');
 }
 
+function toggleCicloRef(){
+  const p=document.getElementById('ePatron')?.value;
+  const box=document.getElementById('eCicloRefBox');
+  if(box) box.style.display=(p&&p!=='LV')?'':'none';
+}
+
 function editEmp(btn){
   const row = btn.closest('tr');
   const name = row?.querySelector('td strong')?.textContent?.trim()||'';
@@ -2691,6 +2802,9 @@ function editEmpByName(name){
   if(document.getElementById('eTel')) document.getElementById('eTel').value=dbEmp.telefono||'';
   if(document.getElementById('eEmail')) document.getElementById('eEmail').value=dbEmp.email||'';
   if(document.getElementById('eHs')) document.getElementById('eHs').value=dbEmp.horas_semana||36;
+  const patronEl=document.getElementById('ePatron'); if(patronEl) patronEl.value=dbEmp.patron||'LV';
+  const cicloEl=document.getElementById('eCicloRef'); if(cicloEl) cicloEl.value=dbEmp.ciclo_ref||'';
+  toggleCicloRef();
   document.querySelector('#empM .mh-t').textContent='✏️ Editar Funcionario — '+full;
   openM('empM');
 }
@@ -2745,7 +2859,9 @@ function resetAndOpenEmpModal(tipoDefault='fijo'){
   ['eApNom','eEmail','eTel','eFnac'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   const hsEl=document.getElementById('eHs'); if(hsEl) hsEl.value='36';
   // Reset selects to first option
-  ['eTipo','eCli','eSec','eTurno'].forEach(id=>{ const el=document.getElementById(id); if(el) el.selectedIndex=0; });
+  ['eTipo','eCli','eSec','eTurno','ePatron'].forEach(id=>{ const el=document.getElementById(id); if(el) el.selectedIndex=0; });
+  const cicloEl=document.getElementById('eCicloRef'); if(cicloEl) cicloEl.value='';
+  const cicloBox=document.getElementById('eCicloRefBox'); if(cicloBox) cicloBox.style.display='none';
   const t=document.getElementById('eTipo');
   if(t) t.value=(String(tipoDefault).toLowerCase()==='suplente'?'Suplente':'Fijo');
   openM('empM');
@@ -2785,7 +2901,9 @@ async function saveEmp(){
     const payload = { apellido, nombre, tipo, email:email||null,
       telefono:tel||null, fecha_nacimiento:fnac||null,
       horas_semana:hs, horas_dia:6, activo:true,
-      clinica_id:clinicaId, sector_id:sectorId, turno_fijo:turnoFijo };
+      clinica_id:clinicaId, sector_id:sectorId, turno_fijo:turnoFijo,
+      patron:document.getElementById('ePatron')?.value||'LV',
+      ciclo_ref:document.getElementById('eCicloRef')?.value||null };
     if(window._editEmpRow || window._editEmpId){
       // Update existing — find by stored ID or by name
       const targetId = window._editEmpId;

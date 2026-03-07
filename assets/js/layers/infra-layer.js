@@ -86,8 +86,8 @@ async function saveFuncionario(data){
 async function updateFuncionario(id, data){
   if(!sb) return null;
   // Only send valid funcionarios columns (exclude joined/computed fields)
-  const {apellido,nombre,tipo,email,telefono,fecha_nacimiento,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id} = data;
-  const cleanData = Object.fromEntries(Object.entries({apellido,nombre,tipo,email,telefono,fecha_nacimiento,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id}).filter(([,v])=>v!==undefined));
+  const {apellido,nombre,tipo,email,telefono,fecha_nacimiento,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id,patron,ciclo_ref} = data;
+  const cleanData = Object.fromEntries(Object.entries({apellido,nombre,tipo,email,telefono,fecha_nacimiento,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id,patron,ciclo_ref}).filter(([,v])=>v!==undefined));
   const {data:res, error} = await sb.from('funcionarios').update(cleanData).eq('id',id).select().single();
   if(error){ toast('er','Error','No se pudo actualizar'); return null; }
   const idx = DB.funcionarios.findIndex(f=>f.id===id);
@@ -104,6 +104,17 @@ async function saveTurno(funcionarioId, fecha, codigo, sectorId, nota){
   const idx = DB.turnos.findIndex(t=>t.funcionario_id===funcionarioId && t.fecha===fecha);
   if(idx>=0) DB.turnos[idx]=res; else DB.turnos.push(res);
   return res;
+}
+
+async function saveTurnosBatch(records){
+  if(!sb || !records.length) return true;
+  const {error} = await sb.from('turnos').upsert(records, {onConflict:'funcionario_id,fecha'});
+  if(error){ toast('er','Error al guardar turnos', error.message); return false; }
+  records.forEach(r=>{
+    const idx=DB.turnos.findIndex(t=>t.funcionario_id===r.funcionario_id && t.fecha===r.fecha);
+    if(idx>=0) DB.turnos[idx]=r; else DB.turnos.push(r);
+  });
+  return true;
 }
 
 async function deleteTurno(funcionarioId, fecha){
@@ -219,6 +230,7 @@ if(window.GApp?.registerLayer){
     updateFuncionario,
     deleteFuncionario,
     saveTurno,
+    saveTurnosBatch,
     deleteTurno,
     saveLicencia,
     saveCambio,
