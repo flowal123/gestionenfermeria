@@ -250,18 +250,19 @@ function renderCal(){
       grp.emps.forEach(emp=>{
         const empRec=EMPS.find(e=>e.name===emp);
         const empId=empRec?.id||null;
-        let monthWork=0;
+        // Detectar días con 7+ guardias consecutivas (NO total del mes)
+        let consec=0; const badDaysMob=new Set();
         for(let d=1;d<=meta.daysInMonth;d++){
           const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
           const wd=(new Date(Date.UTC(year,month,d)).getUTCDay()+6)%7;
           const {code}=resolveCodeForDay(emp,empId,d,dateStr,wd);
-          if(isW(code)) monthWork++;
+          if(isW(code)){ consec++; if(consec>=7) badDaysMob.add(d); } else consec=0;
         }
-        const is7=monthWork>=7;
+        const is7=badDaysMob.size>0;
         const ed=EMPS.find(e=>e.name===emp);
         const dc=ed?.status==='absent'?'dr2':ed?.status==='lar'?'da':'dg';
         mh+=`<div class="mcard">
-          <div class="mhead"><span><span class="dot ${dc}"></span>${emp}</span>${is7?'<span class="chip cr">7ª</span>':''}</div>
+          <div class="mhead"><span><span class="dot ${dc}"></span>${emp}</span>${is7?'<span class="chip cr" title="7ª guardia consecutiva — requiere cobertura">7ª</span>':''}</div>
           <div class="mdays">`;
         cells.forEach(c=>{
           if(!c.valid){ mh+='<button class="mday off" disabled>—</button>'; return; }
@@ -269,7 +270,7 @@ function renderCal(){
           const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
           const wd=c.col;
           const {code,ov,licOv}=resolveCodeForDay(emp,empId,d,dateStr,wd);
-          const cls=is7&&code&&isW(code)?'s7':shCls(code);
+          const cls=badDaysMob.has(d)&&code&&isW(code)?'s7':shCls(code);
           const tip=licOv?.title||ov?.title||'';
           mh+=`<button class="mday ${c.wk?'wk':''}" onclick="editC('${emp}',${d},'${code||''}')">
             <span class="mab">${DAB[c.col]}</span>
@@ -295,28 +296,17 @@ function renderCal(){
     grp.emps.forEach(emp=>{
       const empRec=EMPS.find(e=>e.name===emp);
       const empId=empRec?.id||null;
-      let monthWork=0;
+      let consec=0; const badDays=new Set();
       for(let d=1;d<=meta.daysInMonth;d++){
         const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        let code=getShiftChange(emp,dateStr);
-        if(!code){
-          if(empId && dbLoaded) code=getTurnoFecha(empId,dateStr);
-          if(!code){
-            const sc=WK[emp]||[];
-            const wd=(new Date(Date.UTC(year,month,d)).getUTCDay()+6)%7;
-            code=sc[wd]||'';
-          }
-        }
-        const ov=getApprovedTradeOverride(emp,dateStr);
-        if(ov?.code) code=ov.code;
-        const licOv=getLicenciaCodeForDate(empId,dateStr);
-        if(licOv?.code) code=licOv.code;
-        if(isW(code)) monthWork++;
+        const wd=(new Date(Date.UTC(year,month,d)).getUTCDay()+6)%7;
+        const {code}=resolveCodeForDay(emp,empId,d,dateStr,wd);
+        if(isW(code)){ consec++; if(consec>=7) badDays.add(d); } else consec=0;
       }
-      const is7=monthWork>=7;
+      const is7=badDays.size>0;
       const ed=EMPS.find(e=>e.name===emp);
       const dc=ed?.status==='absent'?'dr2':ed?.status==='lar'?'da':'dg';
-      html+=`<tr class="cnr"><td class="cnm"><span class="dot ${dc}"></span>${emp}${is7?' <span class="chip cr" style="font-size:9px">7ª!</span>':''}</td>`;
+      html+=`<tr class="cnr"><td class="cnm"><span class="dot ${dc}"></span>${emp}${is7?' <span class="chip cr" style="font-size:9px" title="7ª guardia consecutiva — requiere cobertura">7ª!</span>':''}</td>`;
       cells.forEach(c=>{
         if(!c.valid){ html+='<td class="ccc" style="opacity:.5"></td>'; return; }
         const d=c.day;
@@ -324,7 +314,7 @@ function renderCal(){
         const wd=c.col;
         const {code,ov,licOv}=resolveCodeForDay(emp,empId,d,dateStr,wd);
         const wk=c.wk;
-        const cls=is7&&code&&isW(code)?'s7':shCls(code);
+        const cls=badDays.has(d)&&code&&isW(code)?'s7':shCls(code);
         const isTradeApproved = !!ov && !licOv;
         const tip = licOv?.title || ov?.title || '';
         html+=`<td class="ccc${wk?' ccw':''}${isTradeApproved?' cctrd':''}" onclick="editC('${emp}',${d},'${code||''}')">`;
@@ -3075,10 +3065,10 @@ function renderGenGrid(){
       const sc=WK[emp]||[];
       const wc=sc.filter(code=>isW(code)).length;
       const is7=wc>=7;
-      h+=`<tr class="cnr"><td class="cnm">${emp}${is7?' <span class="chip cr" style="font-size:8px">7ª</span>':''}</td>`;
+      h+=`<tr class="cnr"><td class="cnm">${emp}${is7?' <span class="chip cr" style="font-size:8px" title="7ª guardia consecutiva — requiere cobertura">7ª</span>':''}</td>`;
       days.forEach((d,i)=>{
         const code=sc[i]; const ab=DAB[(3+d-1)%7]; const wk=ab==='S'||ab==='D';
-        const cls=is7&&code&&isW(code)?'s7':shCls(code);
+        const cls=is7&&i===6&&code&&isW(code)?'s7':shCls(code);
         h+=`<td class="ccc${wk?' ccw':''}" onclick="editGenCell(this,'${emp}',${d})" title="Click para editar">`;
         if(code) h+=`<span class="sh ${cls}">${code}</span>`;
         h+='</td>';
@@ -3144,7 +3134,17 @@ function downloadGenXLSX(genIdx){
     ws[addr].s={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1E3A6E'}},alignment:{horizontal:'center'}};
   }
   // Color cells by shift code
-  const shiftColors={M:'DBEAFE',TS:'FEF3C7',NO:'EDE9FE',VO:'ECFDF5',LAR:'D1FAE5',CERT:'A7F3D0',F:'FEE2E2',LE:'FFEDD5',s7:'FCA5A5'};
+  const shiftColors={
+    M:'DBEAFE',MS:'DBEAFE',MC:'DBEAFE',MG:'DBEAFE',MO:'DBEAFE',MU:'DBEAFE',MD:'DBEAFE',I:'DBEAFE',
+    T:'FEF3C7',TS:'FEF3C7',TC:'FEF3C7',TG:'FEF3C7',TO:'FEF3C7',TU:'FEF3C7',TD:'FEF3C7',RS:'FEF3C7',E:'FEF3C7',ES:'FEF3C7',CWT:'FEF3C7',
+    NO:'EDE9FE',NU:'EDE9FE',
+    VO:'ECFDF5',VU:'ECFDF5',VD:'ECFDF5',V:'ECFDF5',
+    LAR:'D1FAE5',LM:'D1FAE5',
+    CERT:'A7F3D0',BPS:'A7F3D0',BSE:'A7F3D0',
+    NC:'FEE2E2',F:'FEE2E2',
+    LE:'FFEDD5',FI:'FFEDD5',
+    s7:'FCA5A5',
+  };
   for(let R=1;R<=range.e.r;R++){
     for(let C=2;C<=8;C++){
       const addr=XLSX.utils.encode_cell({r:R,c:C});
