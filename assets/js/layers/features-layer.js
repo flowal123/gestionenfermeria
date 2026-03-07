@@ -1054,6 +1054,15 @@ function filterT(id,val){document.querySelectorAll(`#${id} tr`).forEach(r=>{r.st
 // ........................................................
 // LICENSES
 // ........................................................
+let LIC_FIL = 'all';
+
+function setLicFil(btn, val){
+  LIC_FIL = val;
+  document.querySelectorAll('.lic-fil').forEach(b=>b.classList.remove('act'));
+  btn?.classList.add('act');
+  renderLics();
+}
+
 function getSuplenteSugeridos(lic){
   if(!dbLoaded || !DB.suplentes.length) return [];
   const from=new Date((lic.fecha_desde||lic.from)+'T12:00:00');
@@ -1083,70 +1092,102 @@ function getSuplenteSugeridos(lic){
 
 async function asignarSuplenteLic(licId, supId, supNombre){
   if(!sb) return;
-  const {error}=await sb.from('licencias').update({suplente_id:supId}).eq('id',licId);
+  const {error}=await sb.from('licencias').update({suplente_id:supId,estado:'pendiente'}).eq('id',licId);
   if(error){ toast('er','Error','No se pudo asignar el suplente'); return; }
   const l=DB.licencias.find(x=>x.id===licId);
-  if(l){ l.suplente_id=supId; l.suplente={apellido:supNombre.split(', ')[0],nombre:supNombre.split(', ')[1]||''}; }
+  if(l){ l.suplente_id=supId; l.estado='pendiente'; l.suplente={apellido:supNombre.split(', ')[0],nombre:supNombre.split(', ')[1]||''}; }
   renderLics();
+  renderCobertura();
   toast('ok','Suplente asignado',`${supNombre} — pendiente aprobación supervisora`);
 }
 
 function renderLics(){
   const body=document.getElementById('licBody');if(!body)return;
+  const today=new Date().toISOString().slice(0,10);
   const fmtDate = d=>{ try{ return new Date(d+'T12:00:00').toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}); }catch(e){return d||'—';} };
 
-  // Build flat list
-  const lics = dbLoaded && DB.licencias.length
-    ? DB.licencias.map((l,i)=>({
-        _dbLic: l,
-        id:l.id,
-        funcId: l.funcionario_id||l.id,
-        emp:l.funcionario?`${l.funcionario.apellido}, ${l.funcionario.nombre}`:'—',
-        sec:l.funcionario?.sector?.nombre||'—', type:l.tipo,
-        from:l.fecha_desde, to:l.fecha_hasta,
-        days:l.dias||Math.max(1,Math.round((new Date((l.fecha_hasta||l.fecha_desde)+'T12:00:00')-new Date((l.fecha_desde||l.fecha_hasta)+'T12:00:00'))/86400000)+1),
-        vac:l.genera_vacante,
-        sub:l.suplente?fNombre(l.suplente):(l.suplente_id?'Asignado':'Sin asignar'),
-        st:l.estado==='pendiente'?'pendiente':(l.genera_vacante&&!l.suplente_id?'uncovered':l.estado==='activa'?'active':'covered')
-      }))
-    : LIC_DATA.map(l=>({...l, funcId:l.emp}));
+  const rawLics = dbLoaded && DB.licencias.length ? DB.licencias : [];
 
-  // Sort by employee name then date
-  lics.sort((a,b)=>a.emp.localeCompare(b.emp)||(a.from||'').localeCompare(b.from||''));
+  const lics = rawLics.map(l=>{
+    const ended = l.fecha_hasta < today;
+    const started = l.fecha_desde <= today;
+    const vigente = started && !ended;
+    const covered = !!l.suplente_id;
+    let st;
+    if(ended)                                              st = 'finalizada';
+    else if(l.estado==='pendiente')                        st = 'pendiente';
+    else if(l.genera_vacante && !covered && vigente)       st = 'uncovered';
+    else                                                   st = 'active';
+    return {
+      _dbLic: l, id:l.id,
+      funcId: l.funcionario_id,
+      emp: l.funcionario ? `${l.funcionario.apellido}, ${l.funcionario.nombre}` : '—',
+      sec: l.funcionario?.sector?.nombre||'—',
+      type: l.tipo,
+      from: l.fecha_desde, to: l.fecha_hasta,
+      days: l.dias||Math.max(1,Math.round((new Date((l.fecha_hasta||l.fecha_desde)+'T12:00:00')-new Date((l.fecha_desde||l.fecha_hasta)+'T12:00:00'))/86400000)+1),
+      vac: l.genera_vacante,
+      sub: l.suplente ? fNombre(l.suplente) : (l.suplente_id ? 'Asignado' : '—'),
+      st, ended, vigente,
+    };
+  });
 
-  // Group by employee key
+  // Apply filter
+  const fil = LIC_FIL;
+  const visible = lics.filter(l=>{
+    if(fil==='vigente')    return l.vigente;
+    if(fil==='pendiente')  return l.st==='uncovered'&&l.vigente;
+    if(fil==='finalizada') return l.ended;
+    return true; // 'all'
+  });
+
+  visible.sort((a,b)=>a.emp.localeCompare(b.emp)||(a.from||'').localeCompare(b.from||''));
+
+  // Group by employee
   const groups=[];
   let lastKey=null;
-  lics.forEach((l,idx)=>{
-    if(l.funcId!==lastKey){ groups.push({key:l.funcId, rows:[]}); lastKey=l.funcId; }
-    groups[groups.length-1].rows.push({...l, globalIdx:idx});
+  visible.forEach((l,idx)=>{
+    if(l.funcId!==lastKey){ groups.push({key:l.funcId,rows:[]}); lastKey=l.funcId; }
+    groups[groups.length-1].rows.push({...l,globalIdx:idx});
   });
+
+  if(!groups.length){
+    body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--t3);padding:30px">Sin licencias para el filtro seleccionado</td></tr>';
+    return;
+  }
 
   let html='';
   groups.forEach(grp=>{
     const n=grp.rows.length;
     grp.rows.forEach((l,ri)=>{
       const tc={LAR:'cg',CERT:'cb2',F:'cr',LE:'ca',MAT:'cp',PAT:'cb2',DXF:'cn',CPL:'cp'}[l.type]||'cn';
-      const sc=l.st==='covered'?'cg':l.st==='active'?'cg':l.st==='uncovered'?'cr':l.st==='pendiente'?'ca':'cn';
-      const sl={active:'Activa',covered:'Cubierta ✓',uncovered:'Sin cubrir',pendiente:'Pendiente'}[l.st]||l.st||'—';
-      const canApprove = ['admin','supervisor'].includes(cRole) && l.st==='pendiente';
-      const canAssign  = ['admin','supervisor'].includes(cRole) && l.st==='uncovered';
+      let sc,sl;
+      if(l.st==='finalizada'){
+        sc = l.vac ? (l.sub!=='—'?'cg':'cn') : 'cn';
+        sl = l.vac ? (l.sub!=='—'?'Cubierta ✓':'Finalizada — sin suplente') : 'Finalizada';
+      } else {
+        sc = {active:'cg',covered:'cg',uncovered:'cr',pendiente:'ca'}[l.st]||'cn';
+        sl = {active:'Vigente ✓',covered:'Cubierta ✓',uncovered:'Sin cubrir',pendiente:'Pendiente'}[l.st]||'—';
+      }
+      const canAct = !l.ended && ['admin','supervisor'].includes(cRole);
+      const canAssign = canAct && l.st==='uncovered';
+      const canApprove= canAct && l.st==='pendiente';
       const sugs = (canAssign && l._dbLic) ? getSuplenteSugeridos(l._dbLic) : [];
       const sugHtml = sugs.length
         ? '<div style="margin-top:4px;font-size:10px;color:var(--t2)">Sugeridos: '+
           sugs.map(s=>{const nm=fNombre(s);return `<button class="btn bs xs" style="font-size:10px" onclick="asignarSuplenteLic(${l._dbLic.id},'${s.id}','${nm.replace(/'/g,"\\'")}')">👤 ${nm}</button>`;}).join('')+
           '</div>' : '';
-      const isFirst=ri===0;
-      html+=`<tr${isFirst&&n>1?' class="lic-group-first"':''}>`;
-      if(isFirst){
-        html+=`<td rowspan="${n}" style="vertical-align:top;padding-top:10px;border-right:2px solid var(--b)"><strong>${l.emp}</strong></td>`;
-        html+=`<td rowspan="${n}" style="vertical-align:top;padding-top:10px;font-size:11px;border-right:2px solid var(--b)">${l.sec||'—'}</td>`;
+      const rowStyle = l.ended ? 'opacity:0.65' : '';
+      html+=`<tr style="${rowStyle}">`;
+      if(ri===0){
+        html+=`<td rowspan="${n}" style="vertical-align:top;padding-top:10px;border-right:2px solid var(--b)${l.ended?';opacity:0.65':''}"><strong>${l.emp}</strong></td>`;
+        html+=`<td rowspan="${n}" style="vertical-align:top;padding-top:10px;font-size:11px;border-right:2px solid var(--b)${l.ended?';opacity:0.65':''}">${l.sec||'—'}</td>`;
       }
       html+=`
         <td><span class="chip ${tc}">${l.type}</span></td>
         <td class="mn">${fmtDate(l.from)}</td><td class="mn">${fmtDate(l.to)}</td><td class="mn">${l.days||'—'}</td>
         <td>${l.vac?'<span class="chip ca">Sí</span>':'<span class="chip cn">No</span>'}</td>
-        <td style="font-size:11px">${l.sub||'—'}</td>
+        <td style="font-size:11px">${l.sub}</td>
         <td style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
           <span class="chip ${sc}">${sl}</span>
           ${canApprove?`<button class="btn bs xs" onclick="approveLic(${l.globalIdx})">✓ Aprobar</button><button class="btn bd xs" onclick="rejectLic(${l.globalIdx})">✕ Rechazar</button>`:''}
@@ -1157,6 +1198,79 @@ function renderLics(){
     });
   });
   body.innerHTML=html;
+}
+
+function renderCobertura(){
+  const body=document.getElementById('coberturaBody'); if(!body) return;
+  if(!dbLoaded){ body.innerHTML='<p style="color:var(--t3);padding:20px">Cargando datos...</p>'; return; }
+  const today=new Date().toISOString().slice(0,10);
+  const fmtDate=d=>{try{return new Date(d+'T12:00:00').toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit'});}catch(e){return d||'—';}};
+  const isSup=['admin','supervisor'].includes(cRole);
+
+  // Uncovered + not ended
+  const pending=DB.licencias.filter(l=>
+    l.genera_vacante && !l.suplente_id &&
+    ['activa','pendiente'].includes(l.estado) &&
+    l.fecha_hasta >= today
+  );
+
+  if(!pending.length){
+    body.innerHTML=`
+      <div style="text-align:center;padding:40px;color:var(--t3)">
+        <div style="font-size:32px;margin-bottom:12px">✅</div>
+        <div style="font-size:15px;font-weight:600;color:var(--green)">Sin coberturas pendientes</div>
+        <div style="font-size:12px;margin-top:6px">Todas las vacantes están cubiertas o no hay licencias con vacante activa.</div>
+      </div>`;
+    return;
+  }
+
+  let html=`<div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));padding:4px">`;
+  pending.forEach(l=>{
+    const emp=l.funcionario?fNombre(l.funcionario):'—';
+    const sec=l.funcionario?.sector?.nombre||'—';
+    const daysLeft=Math.max(0,Math.round((new Date(l.fecha_hasta+'T12:00:00')-new Date(today+'T12:00:00'))/86400000));
+    const urgency=daysLeft<=3?'cr':daysLeft<=7?'ca':'cg';
+    const sugs=isSup?getSuplenteSugeridos(l):[];
+    const sugHtml=sugs.length
+      ? sugs.map(s=>{
+          const nm=fNombre(s);
+          const sc=s.sector?.nombre||s.clinica?.nombre||'';
+          const g=DB.turnos.filter(t=>t.funcionario_id===s.id&&isW(t.codigo)).length;
+          return `<button class="btn bg sm" style="width:100%;text-align:left;padding:8px 10px;justify-content:space-between"
+            onclick="asignarSuplenteLic(${l.id},'${s.id}','${nm.replace(/'/g,"\\'")}')">
+            <span>👤 <strong>${nm}</strong><span style="font-size:10px;color:var(--t2);margin-left:6px">${sc}</span></span>
+            <span style="font-size:10px;color:var(--t3)">${g} guard.</span>
+          </button>`;
+        }).join('')
+      : (isSup
+          ? '<p style="font-size:11px;color:var(--t3);margin:6px 0">Sin suplentes disponibles en ese período.</p>'
+          : '<p style="font-size:11px;color:var(--t3);margin:6px 0">Requiere acción de supervisor.</p>');
+
+    html+=`<div class="card" style="border-left:3px solid var(--${urgency==='cr'?'red':urgency==='ca'?'amber':'green'})">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <div style="font-weight:700;font-size:13px">${emp}</div>
+          <div style="font-size:11px;color:var(--t2)">${sec} · <span class="chip ${urgency==='cr'?'cn':'cn'}">${l.tipo}</span></div>
+        </div>
+        <span class="chip ${urgency}" style="flex-shrink:0">${daysLeft===0?'Hoy':daysLeft===1?'1 día':daysLeft+' días'}</span>
+      </div>
+      <div style="font-size:11px;color:var(--t2);margin-bottom:10px">
+        📅 ${fmtDate(l.fecha_desde)} → ${fmtDate(l.fecha_hasta)}
+        ${l.observaciones?`<div style="margin-top:2px;font-size:10px;color:var(--t3)">${l.observaciones}</div>`:''}
+      </div>
+      <div style="font-size:11px;color:var(--t2);font-weight:600;margin-bottom:6px">${sugs.length?'Suplentes sugeridos:':'Cobertura:'}</div>
+      <div style="display:flex;flex-direction:column;gap:4px">${sugHtml}</div>
+    </div>`;
+  });
+  html+='</div>';
+
+  const count=pending.length;
+  body.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <span style="font-size:13px;font-weight:600">${count} vacante${count>1?'s':''} sin cubrir</span>
+      <span style="font-size:11px;color:var(--t3)">Hacé click en un suplente para asignarlo</span>
+    </div>
+    ${html}`;
 }
 
 function renderLAR(){

@@ -174,12 +174,22 @@
 <!-- LICENSES -->
 <div class="view" id="v-licenses">
   <div class="tabs">
-    <div class="tab act" onclick="swTab(this,'tLicA')">Activas</div>
+    <div class="tab act" onclick="swTab(this,'tLicA')">Licencias</div>
+    <div class="tab" onclick="swTab(this,'tLicC');renderCobertura()">Cobertura Pendiente</div>
     <div class="tab" onclick="swTab(this,'tLicL')">LAR Anual 2026</div>
     <div class="tab" onclick="swTab(this,'tLicN');resetLicForm()">Nueva Licencia</div>
   </div>
   <div class="tp act" id="tLicA">
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="btn bg xs lic-fil act" onclick="setLicFil(this,'all')">Todas</button>
+      <button class="btn bg xs lic-fil" onclick="setLicFil(this,'vigente')">Vigentes hoy</button>
+      <button class="btn bg xs lic-fil" onclick="setLicFil(this,'pendiente')">Sin cubrir</button>
+      <button class="btn bg xs lic-fil" onclick="setLicFil(this,'finalizada')">Finalizadas</button>
+    </div>
     <div class="tw"><table><thead><tr><th>Funcionario</th><th>Sector</th><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Vacante</th><th>Suplente</th><th>Estado</th></tr></thead><tbody id="licBody"></tbody></table></div>
+  </div>
+  <div class="tp" id="tLicC">
+    <div id="coberturaBody"></div>
   </div>
   <div class="tp" id="tLicL">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
