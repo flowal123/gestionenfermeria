@@ -76,10 +76,10 @@
 <!-- DASHBOARD -->
 <div class="view act" id="v-dashboard">
   <div class="g4" style="margin-bottom:16px">
-    <div class="sc"><div class="sl" style="background:var(--blue)"></div><div class="slbl">Funcionarios</div><div class="sv" style="color:var(--blue)">47</div><div class="ssub">38 fijos · 9 suplentes</div></div>
-    <div class="sc"><div class="sl" style="background:var(--green)"></div><div class="slbl">Cobertura Hoy</div><div class="sv" style="color:var(--green)">91%</div><div class="ssub">43/47 presentes</div><div class="sdelta up">↑ 3% vs ayer</div></div>
-    <div class="sc"><div class="sl" style="background:var(--amber)"></div><div class="slbl">Licencias Activas</div><div class="sv" style="color:var(--amber)">6</div><div class="ssub">3 LAR · 2 CERT · 1 LE</div></div>
-    <div class="sc"><div class="sl" style="background:var(--red)"></div><div class="slbl">Alertas Críticas</div><div class="sv" style="color:var(--red)">2</div><div class="ssub">7ª guardia detectada</div><div class="sdelta dn">↑ 2 nuevas hoy</div></div>
+    <div class="sc"><div class="sl" style="background:var(--blue)"></div><div class="slbl">Funcionarios</div><div class="sv" style="color:var(--blue)" id="dashFuncNum">47</div><div class="ssub" id="dashFuncSub">38 fijos · 9 suplentes</div></div>
+    <div class="sc"><div class="sl" id="dashCovSl" style="background:var(--green)"></div><div class="slbl">Cobertura Hoy</div><div class="sv" id="dashCovPct" style="color:var(--green)">91%</div><div class="ssub" id="dashCovSub">43/47 presentes</div></div>
+    <div class="sc"><div class="sl" style="background:var(--amber)"></div><div class="slbl">Licencias Activas</div><div class="sv" style="color:var(--amber)" id="dashLicNum">6</div><div class="ssub" id="dashLicSub">3 LAR · 2 CERT · 1 LE</div></div>
+    <div class="sc"><div class="sl" style="background:var(--red)"></div><div class="slbl">Alertas Críticas</div><div class="sv" style="color:var(--red)" id="dashAlertNum">2</div><div class="ssub">alertas activas</div></div>
   </div>
   <div class="g2" style="margin-bottom:16px">
     <div><div class="stit">Cobertura por Sector</div><div class="covg" id="covGrid"></div></div>
@@ -112,8 +112,18 @@
       <button class="btn bp sm" onclick="openM('shiftM')">＋ Turno</button>
     </div>
   </div>
+  <div id="schedBanner" style="display:none;margin-bottom:8px"></div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;font-size:10px;color:var(--t3)">
-    <span><span class="sh sM">M</span> Mañana</span><span><span class="sh sT">T</span> Tarde</span><span><span class="sh sN">N</span> Noche</span><span><span class="sh sV">V</span> Vesp.</span><span><span class="sh sLAR">LAR</span> Lic.anual</span><span><span class="sh sF">F</span> Falta</span><span><span class="sh sLXC">LXC</span> Cambio aprobado</span><span><span class="sh s7">7ª</span> 7ª guardia ⚠</span>
+    <span title="Turno Mañana"><span class="sh sM">M</span> Mañana</span>
+    <span title="Turno Tarde"><span class="sh sT">T</span> Tarde</span>
+    <span title="Turno Noche"><span class="sh sN">N</span> Noche</span>
+    <span title="Turno Vespertino/Especial"><span class="sh sV">V</span> Vesp.</span>
+    <span title="Licencia Anual Reglamentaria"><span class="sh sLAR">LAR</span> Lic. Anual</span>
+    <span title="Licencia Especial / Franco LX"><span class="sh sLE">LE</span> Lic. Especial</span>
+    <span title="No Convocar — no disponible para ese turno"><span class="sh sNC">NC</span> No Conv.</span>
+    <span title="Falta injustificada"><span class="sh sF">F</span> Falta</span>
+    <span title="Cambio de turno aprobado"><span class="sh sLXC">LXC</span> Cambio aprobado</span>
+    <span title="7ª guardia consecutiva — requiere cobertura"><span class="sh s7">7ª</span> 7ª guardia ⚠</span>
   </div>
   <div class="cw"><table class="ctbl" id="calTbl"></table></div>
   <div id="calMobile" class="gone"></div>
@@ -174,7 +184,10 @@
   <div class="tp" id="tLicL">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <span style="font-size:12px;color:var(--t2)">Planificación LAR anual. Cargar al inicio del año para cada funcionario.</span>
-      <button class="btn bp sm" onclick="openM('larM')">＋ Cargar LAR</button>
+      <div style="display:flex;gap:6px">
+        <input type="file" id="licImportFile" accept=".xlsx,.xls" style="display:none" onchange="handleLicImport(event)">
+        <button class="btn bp sm" onclick="document.getElementById('licImportFile').click()">⬆ Importar Excel RRHH</button>
+      </div>
     </div>
     <div class="tw"><table><thead><tr><th>Funcionario</th><th>Sector</th><th>Total</th><th>ENE</th><th>FEB</th><th>MAR</th><th>ABR</th><th>MAY</th><th>JUN</th><th>JUL</th><th>AGO</th><th>SEP</th><th>OCT</th><th>NOV</th><th>DIC</th><th>Saldo</th></tr></thead><tbody id="larBody"></tbody></table></div>
   </div>
@@ -272,7 +285,7 @@
     <div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Fecha</th><th>Mes generado</th><th>Sector</th><th>Func.</th><th>Alertas</th><th>Estado</th><th>Acciones</th></tr></thead>
     <tbody id="genHistBody"></tbody></table></div>
     <!-- VALIDATION MODAL -->
-    <div class="ov" id="genValidM"><div class="modal" style="width:780px;max-width:96vw">
+    <div class="ov" id="genValidM"><div class="modal" style="width:min(1200px,96vw)">
       <div class="mh">
         <div class="mh-t">✓ Validar Planilla — Enero 2026</div>
         <div style="display:flex;gap:6px">
@@ -282,17 +295,15 @@
       </div>
       <div class="mb" style="padding:14px 18px">
         <div style="background:var(--adim);border:1px solid rgba(245,166,35,.3);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:11px;color:var(--amber)">
-          ⚠ Revisá la planilla antes de aprobar. Podés editar celdas individuales. Una vez aprobada se envían las agendas.
+          ⚠ Revisá la planilla antes de aprobar. Podés editar celdas individuales haciendo click. Una vez aprobada se envían las agendas a los funcionarios.
         </div>
-        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
-          <span style="font-size:11px;color:var(--t2)">Alertas detectadas:</span>
-          <span class="chip cr">7ª Guardia - 2</span>
-          <span class="chip ca">Vacantes - 1</span>
-          <span style="margin-left:auto">
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--t2)" id="genValAlertChips"></span>
+          <span style="margin-left:auto;display:flex;gap:6px">
             <button class="btn bg xs" onclick="downloadGenXLSX()">⬇ Exportar Excel</button>
           </span>
         </div>
-        <div class="cw" id="genValGrid" style="max-height:420px;overflow:auto"></div>
+        <div style="overflow:auto;max-height:55vh" id="genValGrid"></div>
       </div>
       <div class="mf">
         <button class="btn bg" onclick="closeM('genValidM')">Cerrar sin aprobar</button>

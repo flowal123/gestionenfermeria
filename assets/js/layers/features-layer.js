@@ -62,20 +62,46 @@ function renderDashAlerts(){
     c.innerHTML=`
       <div class="ai in"><span style="font-size:17px;flex-shrink:0">ℹ️</span><div><div class="ai-t">Sin alertas críticas activas</div><div class="ai-d">No hay pendientes urgentes para supervisión.</div><div class="ai-m">${dbLoaded?'Actualizado desde BD':'Modo demo'}</div></div></div>
     `;
-    return;
+  }else{
+    c.innerHTML=items.slice(0,3).map(a=>`
+      <div class="ai ${a.cls}">
+        <span style="font-size:17px;flex-shrink:0">${a.ic}</span>
+        <div>
+          <div class="ai-t">${a.t}</div>
+          <div class="ai-d">${a.d}</div>
+          <div class="ai-m">${a.m}</div>
+        </div>
+        ${a.btn||''}
+      </div>
+    `).join('');
   }
 
-  c.innerHTML=items.slice(0,3).map(a=>`
-    <div class="ai ${a.cls}">
-      <span style="font-size:17px;flex-shrink:0">${a.ic}</span>
-      <div>
-        <div class="ai-t">${a.t}</div>
-        <div class="ai-d">${a.d}</div>
-        <div class="ai-m">${a.m}</div>
-      </div>
-      ${a.btn||''}
-    </div>
-  `).join('');
+  // Update dashboard stat cards dynamically
+  if(dbLoaded){
+    const fijos = DB.funcionarios.filter(f=>f.activo!==false&&f.tipo!=='suplente').length;
+    const sups  = DB.suplentes.filter(s=>s.activo!==false).length;
+    const total = fijos + sups;
+    const el=id=>document.getElementById(id);
+    el('dashFuncNum')&&(el('dashFuncNum').textContent=String(total));
+    el('dashFuncSub')&&(el('dashFuncSub').textContent=`${fijos} fijos · ${sups} suplentes`);
+
+    const today=new Date().toISOString().slice(0,10);
+    const onLic=new Set(DB.licencias.filter(l=>l.estado==='activa'&&l.fecha_desde<=today&&l.fecha_hasta>=today).map(l=>l.funcionario_id));
+    const present=total-onLic.size;
+    const pct=total?Math.round(present/total*100):100;
+    const col=pct>=90?'var(--green)':pct>=75?'var(--amber)':'var(--red)';
+    const pctEl=el('dashCovPct'); if(pctEl){pctEl.textContent=`${pct}%`;pctEl.style.color=col;}
+    const slEl=el('dashCovSl'); if(slEl) slEl.style.background=col;
+    el('dashCovSub')&&(el('dashCovSub').textContent=`${present}/${total} presentes`);
+
+    const licHoy=DB.licencias.filter(l=>l.estado==='activa'&&l.fecha_desde<=today&&l.fecha_hasta>=today);
+    el('dashLicNum')&&(el('dashLicNum').textContent=String(licHoy.length));
+    const byTipo={};
+    licHoy.forEach(l=>{byTipo[l.tipo]=(byTipo[l.tipo]||0)+1;});
+    el('dashLicSub')&&(el('dashLicSub').textContent=Object.entries(byTipo).map(([k,v])=>`${v} ${k}`).join(' · ')||'Sin licencias activas hoy');
+
+    el('dashAlertNum')&&(el('dashAlertNum').textContent=String(items.length));
+  }
 }
 
 // ........................................................
@@ -205,6 +231,15 @@ function getApprovedTradeOverride(empName,dateStr){
 function renderCal(){
   ensureScheduleMonthSel();
   const {year,month}=SCHED_CTX;
+  // Show borrador banner
+  const gen=GENS.find(g=>g.anio===year&&g.mesNum===month+1);
+  const banner=document.getElementById('schedBanner');
+  if(banner){
+    if(gen?.estado==='borrador'){
+      banner.style.display='block';
+      banner.innerHTML=`<div style="background:var(--adim);border:1px solid rgba(245,166,35,.3);border-radius:var(--r);padding:10px 14px;font-size:11px;color:var(--amber);display:flex;align-items:center;gap:10px">⚠ Planilla de <strong>${gen.mes}</strong> en borrador — pendiente de validación. <button class="btn ba xs" style="margin-left:auto" onclick="go('generation')">Ir a Validar</button></div>`;
+    }else{ banner.style.display='none'; banner.innerHTML=''; }
+  }
   const meta=getMonthMeta(year,month);
   cWeek=Math.max(0,Math.min(meta.weeks-1,cWeek));
   const startIdx=cWeek*7;
@@ -1058,45 +1093,70 @@ async function asignarSuplenteLic(licId, supId, supNombre){
 
 function renderLics(){
   const body=document.getElementById('licBody');if(!body)return;
-  // Use DB data if available, else use LIC_DATA state
+  const fmtDate = d=>{ try{ return new Date(d+'T12:00:00').toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}); }catch(e){return d||'—';} };
+
+  // Build flat list
   const lics = dbLoaded && DB.licencias.length
     ? DB.licencias.map((l,i)=>({
-        id:l.id, emp:l.funcionario?`${l.funcionario.apellido}, ${l.funcionario.nombre}`:'—',
-        sec:l.funcionario?.sector?.nombre||'—', type:l.tipo, 
-        from:l.fecha_desde, to:l.fecha_hasta, days:l.dias||Math.max(1,Math.round((new Date((l.fecha_hasta||l.fecha_desde)+'T12:00:00')-new Date((l.fecha_desde||l.fecha_hasta)+'T12:00:00'))/86400000)+1),
+        _dbLic: l,
+        id:l.id,
+        funcId: l.funcionario_id||l.id,
+        emp:l.funcionario?`${l.funcionario.apellido}, ${l.funcionario.nombre}`:'—',
+        sec:l.funcionario?.sector?.nombre||'—', type:l.tipo,
+        from:l.fecha_desde, to:l.fecha_hasta,
+        days:l.dias||Math.max(1,Math.round((new Date((l.fecha_hasta||l.fecha_desde)+'T12:00:00')-new Date((l.fecha_desde||l.fecha_hasta)+'T12:00:00'))/86400000)+1),
         vac:l.genera_vacante,
         sub:l.suplente?fNombre(l.suplente):(l.suplente_id?'Asignado':'Sin asignar'),
         st:l.estado==='pendiente'?'pendiente':(l.genera_vacante&&!l.suplente_id?'uncovered':l.estado==='activa'?'active':'covered')
       }))
-    : LIC_DATA;
-  body.innerHTML=lics.map((l,idx)=>{
-    const tc={LAR:'cg',CERT:'cb2',F:'cr',LE:'ca',MAT:'cp',PAT:'cb2',DXF:'cn',CPL:'cp'}[l.type]||'cn';
-    const sc=l.st==='covered'?'cg':l.st==='active'?'cg':l.st==='uncovered'?'cr':l.st==='pendiente'?'ca':'cn';
-    const sl={active:'Activa',covered:'Cubierta ✓',uncovered:'Sin cubrir',pendiente:'Pendiente'}[l.st]||l.st||'—';
-    const fmtDate = d=>{ try{ return new Date(d+'T12:00:00').toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}); }catch(e){return d||'—';} };
-    const canApprove = ['admin','supervisor'].includes(cRole) && l.st==='pendiente';
-    const canAssign  = ['admin','supervisor'].includes(cRole) && l.st==='uncovered';
-    // Suplente suggestions for uncovered licencias
-    const dbLic = dbLoaded ? DB.licencias.find(x=>x.id===l.id) : null;
-    const sugs = (canAssign && dbLic) ? getSuplenteSugeridos(dbLic) : [];
-    const sugHtml = sugs.length
-      ? '<div style="margin-top:4px;font-size:10px;color:var(--t2)">Sugeridos: '+
-        sugs.map(s=>{const nm=fNombre(s);return `<button class="btn bs xs" style="font-size:10px" onclick="asignarSuplenteLic(${dbLic.id},'${s.id}','${nm.replace(/'/g,"\\'")}')">👤 ${nm}</button>`;}).join('')+
-        '</div>' : '';
-    return `<tr>
-      <td><strong>${l.emp}</strong></td><td style="font-size:11px">${l.sec||'—'}</td>
-      <td><span class="chip ${tc}">${l.type}</span></td>
-      <td class="mn">${fmtDate(l.from)}</td><td class="mn">${fmtDate(l.to)}</td><td class="mn">${l.days||'—'}</td>
-      <td>${l.vac?'<span class="chip ca">Sí</span>':'<span class="chip cn">No</span>'}</td>
-      <td style="font-size:11px">${l.sub||'—'}</td>
-      <td style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
-        <span class="chip ${sc}" id="licSt${idx}">${sl}</span>
-        ${canApprove?`<button class="btn bs xs" onclick="approveLic(${idx})">✓ Aprobar</button><button class="btn bd xs" onclick="rejectLic(${idx})">✕ Rechazar</button>`:''}
-        ${canAssign?`<button class="btn bp xs" id="licBtn${idx}" onclick="openAssignFromLic(${idx},'${(l.sec||l.sector||'').replace(/'/g,'&#39;')}','${l.from}')">Asignar suplente</button>`:''}
-        ${sugHtml}
-      </td>
-    </tr>`;
-  }).join('');
+    : LIC_DATA.map(l=>({...l, funcId:l.emp}));
+
+  // Sort by employee name then date
+  lics.sort((a,b)=>a.emp.localeCompare(b.emp)||(a.from||'').localeCompare(b.from||''));
+
+  // Group by employee key
+  const groups=[];
+  let lastKey=null;
+  lics.forEach((l,idx)=>{
+    if(l.funcId!==lastKey){ groups.push({key:l.funcId, rows:[]}); lastKey=l.funcId; }
+    groups[groups.length-1].rows.push({...l, globalIdx:idx});
+  });
+
+  let html='';
+  groups.forEach(grp=>{
+    const n=grp.rows.length;
+    grp.rows.forEach((l,ri)=>{
+      const tc={LAR:'cg',CERT:'cb2',F:'cr',LE:'ca',MAT:'cp',PAT:'cb2',DXF:'cn',CPL:'cp'}[l.type]||'cn';
+      const sc=l.st==='covered'?'cg':l.st==='active'?'cg':l.st==='uncovered'?'cr':l.st==='pendiente'?'ca':'cn';
+      const sl={active:'Activa',covered:'Cubierta ✓',uncovered:'Sin cubrir',pendiente:'Pendiente'}[l.st]||l.st||'—';
+      const canApprove = ['admin','supervisor'].includes(cRole) && l.st==='pendiente';
+      const canAssign  = ['admin','supervisor'].includes(cRole) && l.st==='uncovered';
+      const sugs = (canAssign && l._dbLic) ? getSuplenteSugeridos(l._dbLic) : [];
+      const sugHtml = sugs.length
+        ? '<div style="margin-top:4px;font-size:10px;color:var(--t2)">Sugeridos: '+
+          sugs.map(s=>{const nm=fNombre(s);return `<button class="btn bs xs" style="font-size:10px" onclick="asignarSuplenteLic(${l._dbLic.id},'${s.id}','${nm.replace(/'/g,"\\'")}')">👤 ${nm}</button>`;}).join('')+
+          '</div>' : '';
+      const isFirst=ri===0;
+      html+=`<tr${isFirst&&n>1?' class="lic-group-first"':''}>`;
+      if(isFirst){
+        html+=`<td rowspan="${n}" style="vertical-align:top;padding-top:10px;border-right:2px solid var(--b)"><strong>${l.emp}</strong></td>`;
+        html+=`<td rowspan="${n}" style="vertical-align:top;padding-top:10px;font-size:11px;border-right:2px solid var(--b)">${l.sec||'—'}</td>`;
+      }
+      html+=`
+        <td><span class="chip ${tc}">${l.type}</span></td>
+        <td class="mn">${fmtDate(l.from)}</td><td class="mn">${fmtDate(l.to)}</td><td class="mn">${l.days||'—'}</td>
+        <td>${l.vac?'<span class="chip ca">Sí</span>':'<span class="chip cn">No</span>'}</td>
+        <td style="font-size:11px">${l.sub||'—'}</td>
+        <td style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+          <span class="chip ${sc}">${sl}</span>
+          ${canApprove?`<button class="btn bs xs" onclick="approveLic(${l.globalIdx})">✓ Aprobar</button><button class="btn bd xs" onclick="rejectLic(${l.globalIdx})">✕ Rechazar</button>`:''}
+          ${canAssign?`<button class="btn bp xs" onclick="openAssignFromLic(${l.globalIdx},'${(l.sec||'').replace(/'/g,'&#39;')}','${l.from}')">Asignar suplente</button>`:''}
+          ${sugHtml}
+        </td>
+      </tr>`;
+    });
+  });
+  body.innerHTML=html;
 }
 
 function renderLAR(){
@@ -1820,9 +1880,18 @@ async function markRead(){
 // ........................................................
 // GENERATION STATE
 // ........................................................
-let GENS = [
-  {id:1, mes:'Enero 2026',  mesNum:1,  anio:2026, func:47, alertas:2, estado:'aprobada',  fecha:'01/01/2026'},
-];
+let GENS = [];
+function saveGENS(){ try{ localStorage.setItem('guardiapp_gens', JSON.stringify(GENS)); }catch(e){} }
+function loadGENS(){
+  try{
+    const s = localStorage.getItem('guardiapp_gens');
+    if(s){ const arr=JSON.parse(s); if(Array.isArray(arr)){ GENS.splice(0,GENS.length,...arr); return; } }
+  }catch(e){}
+  // default seed so UI is never empty on first load
+  GENS.splice(0, GENS.length, {id:1, mes:'Enero 2026', mesNum:1, anio:2026, func:47, alertas:2, estado:'aprobada', fecha:'01/01/2026'});
+}
+loadGENS();
+
 // Current gen being built (not yet approved)
 let DRAFT_GEN = null;
 // License state (persists across re-renders)
@@ -2020,6 +2089,7 @@ async function startGen(){
     func:DB.funcionarios.length,alertas:alert7,estado:'borrador',
     fecha:new Date().toLocaleDateString('es-UY')};
   GENS.unshift(DRAFT_GEN);
+  saveGENS();
   renderGenHistory();
   populateSendMes();
   populateGenMesOptions();
@@ -2041,9 +2111,11 @@ function renderGenHistory(){
     const actions = g.estado==='borrador'
       ? `<button class="btn bg xs" onclick="previewGen(${i})">👁 Ver</button>
          <button class="btn bg xs" onclick="downloadGenXLSX(${i})">⬇ Excel</button>
-         <button class="btn bp xs" onclick="openValidate(${i})">✓ Validar</button>`
+         <button class="btn bp xs" onclick="openValidate(${i})">✓ Validar</button>
+         <button class="btn bd xs" onclick="deleteGen(${i})" title="Eliminar esta generación y sus turnos">🗑</button>`
       : `<button class="btn bg xs" onclick="previewGen(${i})">👁 Ver</button>
-         <button class="btn bg xs" onclick="downloadGenXLSX(${i})">⬇ Excel</button>`;
+         <button class="btn bg xs" onclick="downloadGenXLSX(${i})">⬇ Excel</button>
+         <button class="btn bd xs" onclick="deleteGen(${i})" title="Eliminar esta generación y sus turnos">🗑</button>`;
     return `<tr>
       <td class="mn">${g.fecha}</td>
       <td><strong>${g.mes}</strong></td>
@@ -2081,6 +2153,16 @@ function openValidate(genIdx){
   renderGenGrid();
   const g = GENS[genIdx];
   document.querySelector('#genValidM .mh-t').textContent = `✓ Validar Planilla — ${g?.mes||''}`;
+  const chips = document.getElementById('genValAlertChips');
+  if(chips && g){
+    const alert7 = g.alertas||0;
+    const vacantes = DB.licencias.filter(l=>l.genera_vacante&&!l.suplente_id&&['activa','pendiente'].includes(l.estado)).length;
+    chips.innerHTML = [
+      alert7>0 ? `<span class="chip cr">🚨 ${alert7} 7ª guardia</span>` : '',
+      vacantes>0 ? `<span class="chip ca">⚠ ${vacantes} vacante${vacantes>1?'s':''} sin cubrir</span>` : '',
+      alert7===0&&vacantes===0 ? '<span class="chip cg">✓ Sin alertas</span>' : ''
+    ].join(' ');
+  }
 }
 
 // ........................................................
@@ -3059,6 +3141,103 @@ async function saveLAR(){
   closeM('larM');
   toast('ok','LAR guardada',created?`${empSel} · ${desde} a ${hasta} (${days} días)`:'No se pudo guardar');
 }
+async function handleLicImport(evt){
+  const file = evt.target.files[0];
+  evt.target.value = '';
+  if(!file){ return; }
+  if(typeof XLSX === 'undefined'){ toast('er','Error','Librería XLSX no disponible.'); return; }
+  if(!sb){ toast('wa','Sin conexión','Se necesita conexión a Supabase para importar.'); return; }
+
+  toast('in','Importando...', file.name);
+
+  let buf;
+  try{ buf = await file.arrayBuffer(); }
+  catch(e){ toast('er','Error al leer archivo', String(e)); return; }
+
+  const wb = XLSX.read(buf, {type:'array'});
+
+  const normStr = s => String(s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+
+  // Build lookup maps: numero → funcionario
+  const byNum = {};
+  const byApel = {};
+  [...DB.funcionarios, ...DB.suplentes].forEach(f => {
+    if(f.numero) byNum[String(f.numero)] = f;
+    const ap = normStr(f.apellido||'');
+    if(ap) byApel[ap] = f;
+  });
+
+  function findFunc(numRaw, nomRaw){
+    const num = String(parseInt(numRaw)||'').trim();
+    if(num && byNum[num]) return byNum[num];
+    const parts = normStr(nomRaw||'').split(/\s+/);
+    const ap = parts[parts.length-1]||'';
+    if(ap && byApel[ap]) return byApel[ap];
+    // partial match first 4 chars
+    if(ap.length >= 4){
+      for(const [k,f] of Object.entries(byApel)){
+        if(k.startsWith(ap.slice(0,4))) return f;
+      }
+    }
+    return null;
+  }
+
+  let total = 0, unmatched = [];
+
+  for(const sname of wb.SheetNames){
+    const data = XLSX.utils.sheet_to_json(wb.Sheets[sname], {header:1, defval:''});
+    if(data.length < 3) continue;
+
+    // Detect first data column: SIAM has col-index 5 with 'feriado'-related header;
+    // Heuristic: if row[0][10] looks like a day number (1-31) → SIAM (firstCol=10), else ALBINCO (firstCol=11)
+    const row0 = data[0]||[];
+    const chk10 = parseInt(row0[10]);
+    const firstCol = (chk10 >= 1 && chk10 <= 31) ? 10 : 11;
+
+    const recs = [];
+    for(let r = 2; r < data.length; r++){
+      const row = data[r];
+      const numRaw = String(row[0]||'').trim();
+      const nomRaw = String(row[1]||'').trim();
+      if(!numRaw || numRaw.toLowerCase() === 'nan' || !numRaw.match(/\d/)) continue;
+
+      const f = findFunc(numRaw, nomRaw);
+      if(!f){ if(numRaw) unmatched.push(`${numRaw} ${nomRaw}`); continue; }
+
+      for(let m = 0; m < 12; m++){
+        const b = firstCol + m * 4;
+        const desde = parseInt(row[b]);
+        const al    = parseInt(row[b+1]);
+        if(!desde || !al || isNaN(desde) || isNaN(al)) continue;
+        if(desde < 1 || al > 31 || al < desde) continue;
+        const yr = 2026;
+        recs.push({
+          funcionario_id: f.id,
+          tipo: 'LAR',
+          fecha_desde: `${yr}-${String(m+1).padStart(2,'0')}-${String(desde).padStart(2,'0')}`,
+          fecha_hasta:  `${yr}-${String(m+1).padStart(2,'0')}-${String(al).padStart(2,'0')}`,
+          genera_vacante: true,
+          estado: 'activa',
+          observaciones: `Importado de ${file.name} / ${sname}`,
+        });
+      }
+    }
+
+    // Batch insert 100 at a time
+    for(let i = 0; i < recs.length; i += 100){
+      const {data: res, error} = await sb.from('licencias').insert(recs.slice(i, i+100)).select('id');
+      if(res) total += res.length;
+      if(error) console.warn('licImport error', error.message);
+    }
+  }
+
+  if(unmatched.length) console.warn('Sin match:', unmatched);
+  await loadDB();
+  renderLics();
+  renderLAR();
+  toast('ok', `${total} licencias LAR importadas`, `${file.name}${unmatched.length ? ` · ${unmatched.length} sin match` : ''}`);
+}
+
 async function submitTrade(){
   const candSel    = TRADE_CTX.candidates?.[TRADE_CTX.selectedIdx];
   const receptor   = candSel?.name||'—';
@@ -3171,24 +3350,43 @@ function previewGen(genIdx){
 
 function renderGenGrid(){
   const grid=document.getElementById('genValGrid'); if(!grid) return;
-  const days=Array.from({length:7},(_,i)=>i+1);
-  let h='<table class="ctbl"><thead><tr><th class="thn">Funcionario</th>';
-  days.forEach(d=>{ const ab=DAB[(3+d-1)%7]; const wk=ab==='S'||ab==='D';
-    h+=`<th class="${wk?'thw':''}"><div style="font-size:8px">${ab}</div><div style="font-family:var(--ff-mono);font-weight:700">${d}</div></th>`;
+  const gi=window._currentGenIdx??0;
+  const gen=GENS[gi];
+  const year=gen?.anio||SCHED_CTX.year;
+  const month=gen?(gen.mesNum-1):SCHED_CTX.month;
+  const daysInMonth=new Date(Date.UTC(year,month+1,0)).getUTCDate();
+  const days=Array.from({length:daysInMonth},(_,i)=>i+1);
+
+  let h=`<table class="ctbl" style="min-width:${daysInMonth*38+180}px"><thead><tr><th class="thn">Funcionario</th>`;
+  days.forEach(d=>{
+    const wd=(new Date(Date.UTC(year,month,d)).getUTCDay()+6)%7;
+    const ab=DAB[wd]; const wk=wd>=5;
+    h+=`<th class="${wk?'thw':''}" style="min-width:32px;padding:2px 1px"><div style="font-size:7px">${ab}</div><div style="font-family:var(--ff-mono);font-weight:700;font-size:10px">${d}</div></th>`;
   });
   h+='</tr></thead><tbody>';
+
   SGRP.forEach(grp=>{
-    h+=`<tr class="csr"><td colspan="8">${grp.sector}</td></tr>`;
+    h+=`<tr class="csr"><td colspan="${daysInMonth+1}">${grp.sector}</td></tr>`;
     grp.emps.forEach(emp=>{
-      const sc=WK[emp]||[];
-      const wc=sc.filter(code=>isW(code)).length;
-      const is7=wc>=7;
-      h+=`<tr class="cnr"><td class="cnm">${emp}${is7?' <span class="chip cr" style="font-size:8px" title="7ª guardia consecutiva — requiere cobertura">7ª</span>':''}</td>`;
+      const empObj=DB.funcionarios.find(f=>fNombre(f)===emp)||DB.suplentes.find(f=>fNombre(f)===emp);
+      const empId=empObj?.id;
+      let workDays=0;
+      const dayCodes=days.map(d=>{
+        const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const wd=(new Date(Date.UTC(year,month,d)).getUTCDay()+6)%7;
+        let code=(empId&&dbLoaded)?getTurnoFecha(empId,dateStr)||'':'';
+        if(!code){ code=(WK[emp]||[])[wd]||''; }
+        if(code&&isW(code)) workDays++;
+        return code;
+      });
+      const is7=workDays>=7;
+      h+=`<tr class="cnr"><td class="cnm" style="min-width:140px">${emp}${is7?' <span class="chip cr" style="font-size:8px" title="7ª guardia consecutiva">7ª</span>':''}</td>`;
       days.forEach((d,i)=>{
-        const code=sc[i]; const ab=DAB[(3+d-1)%7]; const wk=ab==='S'||ab==='D';
-        const cls=is7&&i===6&&code&&isW(code)?'s7':shCls(code);
-        h+=`<td class="ccc${wk?' ccw':''}" onclick="editGenCell(this,'${emp}',${d})" title="Click para editar">`;
-        if(code) h+=`<span class="sh ${cls}">${code}</span>`;
+        const code=dayCodes[i];
+        const wd=(new Date(Date.UTC(year,month,d)).getUTCDay()+6)%7; const wk=wd>=5;
+        const cls=is7&&code&&isW(code)?'s7':shCls(code);
+        h+=`<td class="ccc${wk?' ccw':''}" onclick="editGenCell(this,'${emp}',${d})" title="${code||'—'}">`;
+        if(code) h+=`<span class="sh ${cls}" style="font-size:9px;padding:1px 3px">${code}</span>`;
         h+='</td>';
       });
       h+='</tr>';
@@ -3218,10 +3416,33 @@ function saveGenCell(inp, emp, day){
 async function approveGen(){
   closeM('genValidM');
   const gi = window._currentGenIdx??0;
-  if(GENS[gi]){ GENS[gi].estado='aprobada'; renderGenHistory(); }
-  toast('ok','Planilla aprobada — iniciando envío...','Las agendas se envían ahora a todos los funcionarios');
+  if(!GENS[gi]) return;
+  GENS[gi].estado='aprobada';
+  saveGENS();
+  renderGenHistory();
+  populateSendMes();
+  toast('ok',`Planilla ${GENS[gi].mes} aprobada`,'Las agendas se envían ahora a todos los funcionarios');
   await sendEmails();
-  if(sb) await createAlerta('ok',`Planilla ${GENS[gi]?.mes||''} aprobada`,'Generada y enviada por '+cUser.name,null);
+  if(sb) await createAlerta('ok',`Planilla ${GENS[gi].mes} aprobada`,'Generada y enviada por '+cUser.name,null);
+}
+
+async function deleteGen(idx){
+  const g = GENS[idx]; if(!g) return;
+  if(!confirm(`¿Eliminar la generación de ${g.mes}?\nSe borrarán todos los turnos del mes de la base de datos. Esta acción no se puede deshacer.`)) return;
+  if(sb){
+    const desde = `${g.anio}-${String(g.mesNum).padStart(2,'0')}-01`;
+    const hasta = `${g.anio}-${String(g.mesNum).padStart(2,'0')}-31`;
+    const {error} = await sb.from('turnos').delete().gte('fecha', desde).lte('fecha', hasta);
+    if(error){ toast('er','Error al eliminar turnos', error.message); return; }
+    DB.turnos = DB.turnos.filter(t => t.fecha < desde || t.fecha > hasta);
+  }
+  GENS.splice(idx, 1);
+  saveGENS();
+  renderGenHistory();
+  populateSendMes();
+  populateGenMesOptions();
+  buildDynamicData();
+  toast('ok', `${g.mes} eliminado`, 'Turnos borrados de la base de datos');
 }
 
 function downloadGenXLSX(genIdx){
