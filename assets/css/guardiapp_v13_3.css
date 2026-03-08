@@ -126,6 +126,7 @@ tr:hover td{background:rgba(255,255,255,.018);}
 .sCPB{background:rgba(0,212,255,.12);color:var(--cyan);}
 .sNC{background:rgba(255,77,77,.1);color:#ff9090;border:1px dashed rgba(255,77,77,.4);}
 .sX{background:rgba(255,255,255,.07);color:var(--t2);}
+.sCMP{background:rgba(255,180,0,.25);color:#ffd566;border:1px solid rgba(255,180,0,.5);}
 .s7{background:rgba(255,77,77,.35);color:var(--red);border:1px solid var(--red);animation:b7 1.5s infinite;}
 @keyframes b7{0%,100%{opacity:1}50%{opacity:.45}}
 @keyframes fadeOut{to{opacity:0;transform:translateX(20px)}}

@@ -2163,6 +2163,7 @@ async function startGen(){
   let alert7=0;
   const chunkSize=Math.ceil(DB.funcionarios.length/6)||1;
 
+  let cmpCount=0;
   for(let fi=0;fi<DB.funcionarios.length;fi++){
     if(fi>0 && fi%chunkSize===0) markStep(Math.min(Math.floor(fi/chunkSize),5));
     const f=DB.funcionarios[fi];
@@ -2170,13 +2171,20 @@ async function startGen(){
     const cicloRef=f.ciclo_ref||null;
     const code=f.turno_fijo||'M';
     const sectorId=f.sector_id||null;
+    // Birthday detection for this month
+    const bdayDate=f.fecha_nacimiento?new Date(f.fecha_nacimiento+'T12:00:00'):null;
+    const bdayDay=bdayDate&&bdayDate.getUTCMonth()===month?bdayDate.getUTCDate():null;
     let consec=0; let bad7=false;
     for(let d=1;d<=daysInMonth;d++){
       const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const lic=getLicenciaCodeForDate(f.id,dateStr);
       if(lic){consec=0;continue;}
       if(isWorkDay(patron,cicloRef,dateStr)){
-        records.push({funcionario_id:f.id,fecha:dateStr,codigo:code,sector_id:sectorId});
+        // Cumpleaños: medio día CMP — no se puede mover
+        const isBday=(bdayDay!==null && d===bdayDay);
+        const turnoCode=isBday?'CMP':code;
+        if(isBday) cmpCount++;
+        records.push({funcionario_id:f.id,fecha:dateStr,codigo:turnoCode,sector_id:sectorId});
         consec++; if(consec>=7) bad7=true;
       } else {
         consec=0;
@@ -2208,7 +2216,7 @@ async function startGen(){
   populateSendMes();
   populateGenMesOptions();
   await loadDB();
-  toast('ok',`${mesVal} generado — ${records.length} turnos · ${alert7} alertas 7ª guardia`,
+  toast('ok',`${mesVal} generado — ${records.length} turnos · ${alert7} alertas 7ª guardia${cmpCount?` · 🎂 ${cmpCount} cumpleaños`:''}`,
     'Revisá la planilla, editá si necesario, luego aprobá para enviar agendas.');
 }
 

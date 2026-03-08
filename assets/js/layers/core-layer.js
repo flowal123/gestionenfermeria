@@ -141,7 +141,7 @@ const MYSCHED={
 };
 
 const DAB='LMMJVSD';
-const WK_CODES=new Set(['M','MS','MC','MG','MO','MU','MD','T','TS','TC','TG','TO','TU','TD','RS','NO','NU','VO','VU','VD','CPB','GINE','AXO','H','AP','U1','U2','DOM','PSR','O','CG','CWM','E','V','NC','I','ES','CWT','FI','BSE','BPS','LM']);
+const WK_CODES=new Set(['M','MS','MC','MG','MO','MU','MD','T','TS','TC','TG','TO','TU','TD','RS','NO','NU','VO','VU','VD','CPB','GINE','AXO','H','AP','U1','U2','DOM','PSR','O','CG','CWM','E','V','NC','I','ES','CWT','FI','BSE','BPS','LM','CMP']);
 
 // ........................................................
 // UTILS
@@ -165,6 +165,7 @@ function shCls(code){
   if(c==='F') return 'sF';
   if(c==='LXC') return 'sLXC';
   if(c==='NC') return 'sNC';
+  if(c==='CMP') return 'sCMP';
   if(['FI','LE','LXE','LX1','LX3','Lx3','DXF'].includes(c)||c.startsWith('LX')||c.startsWith('Lx')) return 'sLE';
   if(['CPB','GINE','AXO','H','AP','DOM'].includes(c)) return 'sCPB';
   return 'sX';
