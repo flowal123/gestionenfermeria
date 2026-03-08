@@ -1175,10 +1175,11 @@ function renderLics(){
       }
       const canAct = !l.ended && ['admin','supervisor'].includes(cRole);
       const canAssign = canAct && l.st==='uncovered';
+      const canReassign= canAct && (l.st==='pendiente' || (l.vac && l._dbLic?.suplente_id));
       const canApprove= canAct && l.st==='pendiente';
-      const sugs = (canAssign && l._dbLic) ? getSuplenteSugeridos(l._dbLic) : [];
+      const sugs = ((canAssign||canReassign) && l._dbLic) ? getSuplenteSugeridos(l._dbLic) : [];
       const sugHtml = sugs.length
-        ? '<div style="margin-top:4px;font-size:10px;color:var(--t2)">Sugeridos: '+
+        ? '<div style="margin-top:4px;font-size:10px;color:var(--t2)">'+(canReassign?'Reasignar: ':'Sugeridos: ')+
           sugs.map(s=>{const nm=fNombre(s);const cb=`asignarSuplenteLic(${JSON.stringify(l._dbLic.id)},${JSON.stringify(s.id)},${JSON.stringify(nm)})`;return `<button class="btn bs xs" style="font-size:10px" onclick="${cb.replace(/"/g,'&quot;')}">👤 ${nm}</button>`;}).join('')+
           '</div>' : '';
       const rowStyle = l.ended ? 'opacity:0.65' : '';
@@ -1196,6 +1197,7 @@ function renderLics(){
           <span class="chip ${sc}">${sl}</span>
           ${canApprove?`<button class="btn bs xs" onclick="approveLic(${l.globalIdx})">✓ Aprobar</button><button class="btn bd xs" onclick="rejectLic(${l.globalIdx})">✕ Rechazar</button>`:''}
           ${canAssign?`<button class="btn bp xs" onclick="openAssignFromLic(${l.globalIdx},'${(l.sec||'').replace(/'/g,'&#39;')}','${l.from}')">Asignar suplente</button>`:''}
+          ${canReassign?`<button class="btn bg xs" style="font-size:10px" onclick="openAssignFromLic(${l.globalIdx},'${(l.sec||'').replace(/'/g,'&#39;')}','${l.from}')">↺ Reasignar</button>`:''}
           ${sugHtml}
         </td>
       </tr>`;
@@ -2259,7 +2261,8 @@ async function startGen(){
     const f=DB.funcionarios[fi];
     const patron=f.patron||'LV';
     const cicloRef=f.ciclo_ref||null;
-    const code=f.turno_fijo||'M';
+    const turnoBase=f.turno_fijo||'M';
+    const turnoSab=f.turno_sabado||null; // turno distinto para sábados (ej. LS M+T)
     const sectorId=f.sector_id||null;
     // Birthday detection for this month
     const bdayDate=f.fecha_nacimiento?new Date(f.fecha_nacimiento+'T12:00:00'):null;
@@ -2270,6 +2273,10 @@ async function startGen(){
       const lic=getLicenciaCodeForDate(f.id,dateStr);
       if(lic){consec=0;continue;}
       if(isWorkDay(patron,cicloRef,dateStr)){
+        // Sábado con turno especial
+        const wd=(new Date(dateStr+'T12:00:00').getUTCDay()+6)%7; // 0=Lun,5=Sáb,6=Dom
+        const isSat=(wd===5);
+        const code=(isSat&&turnoSab)?turnoSab:turnoBase;
         // Cumpleaños: medio día CMP — no se puede mover
         const isBday=(bdayDay!==null && d===bdayDay);
         const turnoCode=isBday?'CMP':code;
@@ -3060,8 +3067,11 @@ async function saveLic(){
 function toggleCicloRef(){
   const p=document.getElementById('ePatron')?.value;
   const box=document.getElementById('eCicloRefBox');
+  const sabBox=document.getElementById('eTurnoSabBox');
   // ciclo_ref solo aplica a patrones cíclicos (4x1, 6x1)
   if(box) box.style.display=(p==='4x1'||p==='6x1')?'':'none';
+  // turno_sabado solo aplica a Lunes-Sábado (LS)
+  if(sabBox) sabBox.style.display=(p==='LS')?'':'none';
 }
 
 function editEmp(btn){
@@ -3103,6 +3113,7 @@ function editEmpByName(name){
   if(document.getElementById('eHs')) document.getElementById('eHs').value=dbEmp.horas_semana||36;
   const patronEl=document.getElementById('ePatron'); if(patronEl) patronEl.value=dbEmp.patron||'LV';
   const cicloEl=document.getElementById('eCicloRef'); if(cicloEl) cicloEl.value=dbEmp.ciclo_ref||'';
+  const turnoSabEl=document.getElementById('eTurnoSab'); if(turnoSabEl) turnoSabEl.value=dbEmp.turno_sabado||'';
   toggleCicloRef();
   document.querySelector('#empM .mh-t').textContent='✏️ Editar Funcionario — '+full;
   openM('empM');
@@ -3161,6 +3172,8 @@ function resetAndOpenEmpModal(tipoDefault='fijo'){
   ['eTipo','eCli','eSec','eTurno','ePatron'].forEach(id=>{ const el=document.getElementById(id); if(el) el.selectedIndex=0; });
   const cicloEl=document.getElementById('eCicloRef'); if(cicloEl) cicloEl.value='';
   const cicloBox=document.getElementById('eCicloRefBox'); if(cicloBox) cicloBox.style.display='none';
+  const turnoSabEl=document.getElementById('eTurnoSab'); if(turnoSabEl) turnoSabEl.value='';
+  const turnoSabBox=document.getElementById('eTurnoSabBox'); if(turnoSabBox) turnoSabBox.style.display='none';
   const t=document.getElementById('eTipo');
   if(t) t.value=(String(tipoDefault).toLowerCase()==='suplente'?'Suplente':'Fijo');
   openM('empM');
@@ -3197,10 +3210,12 @@ async function saveEmp(){
   if(sb){
     const clinicaId = await getIdByNombre('clinicas', cliTxt);
     const sectorId  = await getIdByNombre('sectores', secTxt);
+    const turnoSabVal=document.getElementById('eTurnoSab')?.value||null;
     const payload = { apellido, nombre, tipo, email:email||null,
       telefono:tel||null, fecha_nacimiento:fnac||null, fecha_ingreso:fing||null,
       horas_semana:hs, horas_dia:6, activo:true,
       clinica_id:clinicaId, sector_id:sectorId, turno_fijo:turnoFijo,
+      turno_sabado:turnoSabVal||null,
       patron:document.getElementById('ePatron')?.value||'LV',
       ciclo_ref:document.getElementById('eCicloRef')?.value||null };
     if(numeroRaw) payload.numero=numeroRaw;
