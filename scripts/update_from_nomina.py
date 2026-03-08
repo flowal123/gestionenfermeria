@@ -47,7 +47,13 @@ def get_patron(regimen_raw):
         return '4x1'
     if '6x1' in r or '6 y 1' in r:
         return '6x1'
-    return 'LV'  # lunes a viernes / 36hs / sabado-domingo / default
+    if 'sabado y domingo' in r or 'sabado domingo' in r:
+        return 'SD'
+    if '36' in r and 'semana' in r:
+        return '36H'
+    if 'lunes a sabado' in r or 'sabados' in r or 'libre especial' in r:
+        return 'LS'
+    return 'LV'  # lunes a viernes / default
 
 # ── turno → turno_fijo ────────────────────────────────────────────────────
 

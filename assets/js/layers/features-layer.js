@@ -2155,7 +2155,10 @@ async function startGen(){
       const off=((daysBetween(cicloRef,dateStr)%7)+7)%7;
       return off<6;
     }
-    return wd<5; // LV: Lun-Vie
+    if(patron==='LS') return wd<6;  // Lun-Sáb (Mon=0…Sat=5, excl Dom=6)
+    if(patron==='SD') return wd>=5; // Solo Sáb (5) y Dom (6)
+    if(patron==='36H') return true; // Flexible — siempre disponible, supervisor asigna
+    return wd<5; // LV: Lun-Vie (default)
   }
 
   markStep(0);
@@ -2970,7 +2973,8 @@ async function saveLic(){
 function toggleCicloRef(){
   const p=document.getElementById('ePatron')?.value;
   const box=document.getElementById('eCicloRefBox');
-  if(box) box.style.display=(p&&p!=='LV')?'':'none';
+  // ciclo_ref solo aplica a patrones cíclicos (4x1, 6x1)
+  if(box) box.style.display=(p==='4x1'||p==='6x1')?'':'none';
 }
 
 function editEmp(btn){
