@@ -86,8 +86,8 @@ async function saveFuncionario(data){
 async function updateFuncionario(id, data){
   if(!sb) return null;
   // Only send valid funcionarios columns (exclude joined/computed fields)
-  const {apellido,nombre,tipo,email,telefono,fecha_nacimiento,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id,patron,ciclo_ref} = data;
-  const cleanData = Object.fromEntries(Object.entries({apellido,nombre,tipo,email,telefono,fecha_nacimiento,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id,patron,ciclo_ref}).filter(([,v])=>v!==undefined));
+  const {numero,apellido,nombre,tipo,email,telefono,fecha_nacimiento,fecha_ingreso,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id,patron,ciclo_ref} = data;
+  const cleanData = Object.fromEntries(Object.entries({numero,apellido,nombre,tipo,email,telefono,fecha_nacimiento,fecha_ingreso,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id,patron,ciclo_ref}).filter(([,v])=>v!==undefined));
   const {data:res, error} = await sb.from('funcionarios').update(cleanData).eq('id',id).select().single();
   if(error){ toast('er','Error','No se pudo actualizar'); return null; }
   const idx = DB.funcionarios.findIndex(f=>f.id===id);

@@ -3000,13 +3000,17 @@ function editEmpByName(name){
   window._editEmpId=dbEmp.id;
   window._editEmpRow=null;
   const full=fNombre(dbEmp);
+  if(document.getElementById('eNumero')) document.getElementById('eNumero').value=dbEmp.numero||'';
   if(document.getElementById('eApNom')) document.getElementById('eApNom').value=full;
   if(document.getElementById('eTipo')) document.getElementById('eTipo').value=(dbEmp.tipo==='suplente'?'Suplente':'Fijo');
   setSelByText('eCli', dbEmp.clinica?.nombre||'');
   setSelByText('eSec', dbEmp.sector?.nombre||'');
-  const shiftMap={M:'Mañana',TS:'Tarde',T:'Tarde',NO:'Noche',N:'Noche',ROT:'Rotativo',ROTATIVO:'Rotativo'};
-  setSelByText('eTurno', shiftMap[String(dbEmp.turno_fijo||'').toUpperCase()]||dbEmp.turno_fijo||'');
+  // Normalizar código de turno al valor del <option> (M, T, V, N, ROT)
+  const tCode=String(dbEmp.turno_fijo||'').toUpperCase();
+  const tNorm={TS:'T',NO:'N',ROTATIVO:'ROT'}[tCode]||tCode||'M';
+  const turnoEl=document.getElementById('eTurno'); if(turnoEl) turnoEl.value=tNorm;
   if(document.getElementById('eFnac')) document.getElementById('eFnac').value=dbEmp.fecha_nacimiento||'';
+  if(document.getElementById('eFIng')) document.getElementById('eFIng').value=dbEmp.fecha_ingreso||'';
   if(document.getElementById('eTel')) document.getElementById('eTel').value=dbEmp.telefono||'';
   if(document.getElementById('eEmail')) document.getElementById('eEmail').value=dbEmp.email||'';
   if(document.getElementById('eHs')) document.getElementById('eHs').value=dbEmp.horas_semana||36;
@@ -3064,7 +3068,7 @@ function resetAndOpenEmpModal(tipoDefault='fijo'){
   window._editEmpRow=null;
   window._editEmpId=null;
   document.querySelector('#empM .mh-t').textContent='＋ Nuevo Funcionario';
-  ['eApNom','eEmail','eTel','eFnac'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['eNumero','eApNom','eEmail','eTel','eFnac','eFIng'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   const hsEl=document.getElementById('eHs'); if(hsEl) hsEl.value='36';
   // Reset selects to first option
   ['eTipo','eCli','eSec','eTurno','ePatron'].forEach(id=>{ const el=document.getElementById(id); if(el) el.selectedIndex=0; });
@@ -3088,17 +3092,17 @@ async function getIdByNombre(table, nombre){
 }
 
 async function saveEmp(){
-  const raw  = document.getElementById('eApNom')?.value.trim();
-  const email= document.getElementById('eEmail')?.value.trim();
-  const tel  = document.getElementById('eTel')?.value.trim();
-  const fnac = document.getElementById('eFnac')?.value;
-  const hs   = parseInt(document.getElementById('eHs')?.value)||36;
-  const tipo = document.getElementById('eTipo')?.value==='Fijo'?'fijo':'suplente';
+  const raw   = document.getElementById('eApNom')?.value.trim();
+  const email = document.getElementById('eEmail')?.value.trim();
+  const tel   = document.getElementById('eTel')?.value.trim();
+  const fnac  = document.getElementById('eFnac')?.value;
+  const fing  = document.getElementById('eFIng')?.value;
+  const hs    = parseInt(document.getElementById('eHs')?.value)||36;
+  const tipo  = document.getElementById('eTipo')?.value==='Fijo'?'fijo':'suplente';
   const cliTxt = document.getElementById('eCli')?.value||'';
   const secTxt = document.getElementById('eSec')?.value||'';
-  const tTxt = document.getElementById('eTurno')?.value||'Mañana';
-  const turnoMap={'Mañana':'M','Tarde':'TS','Noche':'NO','Rotativo':'ROT'};
-  const turnoFijo=turnoMap[tTxt]||'M';
+  const turnoFijo = document.getElementById('eTurno')?.value||'M'; // valor directo del <option>
+  const numeroRaw = parseInt(document.getElementById('eNumero')?.value)||null;
   if(!raw){ toast('wa','Completá el nombre','Campo obligatorio'); return; }
   const parts = raw.split(',');
   const apellido = (parts[0]||'').trim().toUpperCase();
@@ -3107,11 +3111,12 @@ async function saveEmp(){
     const clinicaId = await getIdByNombre('clinicas', cliTxt);
     const sectorId  = await getIdByNombre('sectores', secTxt);
     const payload = { apellido, nombre, tipo, email:email||null,
-      telefono:tel||null, fecha_nacimiento:fnac||null,
+      telefono:tel||null, fecha_nacimiento:fnac||null, fecha_ingreso:fing||null,
       horas_semana:hs, horas_dia:6, activo:true,
       clinica_id:clinicaId, sector_id:sectorId, turno_fijo:turnoFijo,
       patron:document.getElementById('ePatron')?.value||'LV',
       ciclo_ref:document.getElementById('eCicloRef')?.value||null };
+    if(numeroRaw) payload.numero=numeroRaw;
     if(window._editEmpRow || window._editEmpId){
       // Update existing — find by stored ID or by name
       const targetId = window._editEmpId;
