@@ -101,6 +101,9 @@ function renderDashAlerts(){
     el('dashLicSub')&&(el('dashLicSub').textContent=Object.entries(byTipo).map(([k,v])=>`${v} ${k}`).join(' · ')||'Sin licencias activas hoy');
 
     el('dashAlertNum')&&(el('dashAlertNum').textContent=String(items.length));
+    // Título KPIs dinámico con mes/año actual
+    const kpiTit=el('dashKpiTitle');
+    if(kpiTit){ const n=new Date(); kpiTit.textContent=`KPIs — ${getMonthLabel(n.getFullYear(),n.getMonth())}`; }
   }
 }
 
@@ -2181,20 +2184,18 @@ function populateGenMesOptions(){
   const prev=sel.value;
   const generated=new Set((GENS||[]).map(getGeneratedMonthKey).filter(Boolean));
   const months=[];
-  const src=getAvailableMonthsGlobal();
-  const lastGen=(GENS||[]).map(getGeneratedMonthKey).filter(Boolean).sort().slice(-1)[0];
-  const base=lastGen ? ymLabelFromKey(lastGen) : (src[src.length-1]||{year:2026,month:0});
-  let y=base.year, m=base.month;
-  for(let i=0;i<6;i++){
-    m+=1;
-    if(m>11){ m=0; y+=1; }
+  // Siempre empezar desde el mes actual — nunca mostrar meses pasados
+  const now=new Date();
+  let y=now.getUTCFullYear(), m=now.getUTCMonth(); // 0-indexed
+  for(let i=0;i<12;i++){
     const key=`${y}-${String(m+1).padStart(2,'0')}`;
     if(!generated.has(key)) months.push({key,label:getMonthLabel(y,m)});
+    m++;
+    if(m>11){ m=0; y++; }
   }
   if(!months.length){
-    const now=new Date();
-    const key=`${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
-    months.push({key,label:getMonthLabel(now.getUTCFullYear(),now.getUTCMonth())});
+    // Todos los próximos meses ya generados — ofrecer el mes 13 adelante
+    months.push({key:`${y}-${String(m+1).padStart(2,'0')}`,label:getMonthLabel(y,m)});
   }
   sel.innerHTML=months.map(mo=>`<option value="${mo.label}">${mo.label}</option>`).join('');
   if(prev && [...sel.options].some(o=>o.value===prev)) sel.value=prev;
@@ -3648,7 +3649,9 @@ async function deleteGen(idx){
   if(!confirm(`¿Eliminar la generación de ${g.mes}?\nSe borrarán todos los turnos del mes de la base de datos. Esta acción no se puede deshacer.`)) return;
   if(sb){
     const desde = `${g.anio}-${String(g.mesNum).padStart(2,'0')}-01`;
-    const hasta = `${g.anio}-${String(g.mesNum).padStart(2,'0')}-31`;
+    // Calcular el último día real del mes (evita error con meses de 28/29/30 días)
+    const lastDay = new Date(Date.UTC(g.anio, g.mesNum, 0)).getUTCDate();
+    const hasta   = `${g.anio}-${String(g.mesNum).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
     const {error} = await sb.from('turnos').delete().gte('fecha', desde).lte('fecha', hasta);
     if(error){ toast('er','Error al eliminar turnos', error.message); return; }
     DB.turnos = DB.turnos.filter(t => t.fecha < desde || t.fecha > hasta);
