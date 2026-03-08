@@ -1055,6 +1055,7 @@ function filterT(id,val){document.querySelectorAll(`#${id} tr`).forEach(r=>{r.st
 // LICENSES
 // ........................................................
 let LIC_FIL = 'all';
+let COB_FIL = { mes: '', cliId: 'all', secId: 'all' };
 
 function setLicFil(btn, val){
   LIC_FIL = val;
@@ -1175,7 +1176,7 @@ function renderLics(){
       const sugs = (canAssign && l._dbLic) ? getSuplenteSugeridos(l._dbLic) : [];
       const sugHtml = sugs.length
         ? '<div style="margin-top:4px;font-size:10px;color:var(--t2)">Sugeridos: '+
-          sugs.map(s=>{const nm=fNombre(s);return `<button class="btn bs xs" style="font-size:10px" onclick="asignarSuplenteLic(${l._dbLic.id},'${s.id}','${nm.replace(/'/g,"\\'")}')">👤 ${nm}</button>`;}).join('')+
+          sugs.map(s=>{const nm=fNombre(s);const cb=`asignarSuplenteLic(${JSON.stringify(l._dbLic.id)},${JSON.stringify(s.id)},${JSON.stringify(nm)})`;return `<button class="btn bs xs" style="font-size:10px" onclick="${cb.replace(/"/g,'&quot;')}">👤 ${nm}</button>`;}).join('')+
           '</div>' : '';
       const rowStyle = l.ended ? 'opacity:0.65' : '';
       html+=`<tr style="${rowStyle}">`;
@@ -1200,77 +1201,162 @@ function renderLics(){
   body.innerHTML=html;
 }
 
+function cobSetFil(key, val){
+  COB_FIL[key] = val;
+  renderCobertura();
+}
+
 function renderCobertura(){
   const body=document.getElementById('coberturaBody'); if(!body) return;
   if(!dbLoaded){ body.innerHTML='<p style="color:var(--t3);padding:20px">Cargando datos...</p>'; return; }
+
   const today=new Date().toISOString().slice(0,10);
-  const fmtDate=d=>{try{return new Date(d+'T12:00:00').toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit'});}catch(e){return d||'—';}};
+  const todayD=new Date(today+'T12:00:00');
+  const fmt=d=>{try{const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'});}catch(e){return d||'—';}};
+  const fmtLong=d=>{try{const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('es-UY',{weekday:'long',day:'numeric',month:'long'});}catch(e){return d;}};
   const isSup=['admin','supervisor'].includes(cRole);
 
-  // Uncovered + not ended
-  const pending=DB.licencias.filter(l=>
+  // ── Month options from licencias + current month ──────────────────────────
+  const nowY=new Date().getFullYear(), nowM=new Date().getMonth()+1;
+  const defaultMes=`${nowY}-${String(nowM).padStart(2,'0')}`;
+  if(!COB_FIL.mes) COB_FIL.mes=defaultMes;
+
+  const mesSet=new Set([defaultMes]);
+  DB.licencias.forEach(l=>{
+    if(l.fecha_desde) mesSet.add(l.fecha_desde.slice(0,7));
+    if(l.fecha_hasta) mesSet.add(l.fecha_hasta.slice(0,7));
+  });
+  const mesOpts=[...mesSet].sort().map(m=>{
+    const [y,mo]=m.split('-');
+    const label=new Date(+y,+mo-1,1).toLocaleDateString('es-UY',{month:'long',year:'numeric'});
+    return `<option value="${m}"${m===COB_FIL.mes?' selected':''}>${label.charAt(0).toUpperCase()+label.slice(1)}</option>`;
+  }).join('');
+
+  // ── Date range for selected month ─────────────────────────────────────────
+  const [mY,mM]=COB_FIL.mes.split('-').map(Number);
+  const mesFrom=`${mY}-${String(mM).padStart(2,'0')}-01`;
+  const mesTo=new Date(mY,mM,0).toISOString().slice(0,10);
+
+  // ── Filter licencias (before building option lists) ───────────────────────
+  let pending=DB.licencias.filter(l=>
     l.genera_vacante && !l.suplente_id &&
     ['activa','pendiente'].includes(l.estado) &&
-    l.fecha_hasta >= today
+    l.fecha_hasta >= today &&
+    l.fecha_hasta >= mesFrom &&
+    l.fecha_desde <= mesTo
   );
+  if(COB_FIL.cliId!=='all') pending=pending.filter(l=>
+    l.funcionario?.clinica?.id===COB_FIL.cliId || l.funcionario?.clinica_id===COB_FIL.cliId);
+  if(COB_FIL.secId!=='all') pending=pending.filter(l=>
+    l.funcionario?.sector?.id===COB_FIL.secId);
 
-  if(!pending.length){
-    body.innerHTML=`
-      <div style="text-align:center;padding:40px;color:var(--t3)">
+  // ── Clínica / Sector options — derived from all funcionarios ──────────────
+  const cliMap=new Map(), secMap=new Map();
+  [...DB.funcionarios,...DB.suplentes,...(DB.licencias.map(l=>l.funcionario).filter(Boolean))].forEach(f=>{
+    if(f.clinica?.nombre) cliMap.set(f.clinica_id||f.clinica.nombre, f.clinica.nombre);
+    if(f.sector?.nombre)  secMap.set(f.sector_id ||f.sector.nombre,  f.sector.nombre);
+  });
+  const cliOpts='<option value="all">Todas las clínicas</option>'+
+    [...cliMap.entries()].sort((a,b)=>a[1].localeCompare(b[1]))
+      .map(([id,nm])=>`<option value="${id}"${id===COB_FIL.cliId?' selected':''}>${nm}</option>`).join('');
+  const secOpts='<option value="all">Todos los sectores</option>'+
+    [...secMap.entries()].sort((a,b)=>a[1].localeCompare(b[1]))
+      .map(([id,nm])=>`<option value="${id}"${id===COB_FIL.secId?' selected':''}>${nm}</option>`).join('');
+
+  // ── Build agenda: group licencias by "anchor day" in selected month ───────
+  // Anchor = max(fecha_desde, mesFrom) — so ongoing licencias appear from day 1
+  const dayMap=new Map();
+  pending.forEach(l=>{
+    const anchor=l.fecha_desde>mesFrom?l.fecha_desde:mesFrom;
+    if(!dayMap.has(anchor)) dayMap.set(anchor,[]);
+    dayMap.get(anchor).push(l);
+  });
+  const days=[...dayMap.keys()].sort();
+
+  // ── Render filter bar ─────────────────────────────────────────────────────
+  const filterBar=`
+    <div class="cob-filters">
+      <div><label>Mes</label><br>
+        <select onchange="cobSetFil('mes',this.value)">${mesOpts}</select>
+      </div>
+      <div><label>Clínica</label><br>
+        <select onchange="cobSetFil('cliId',this.value)">${cliOpts}</select>
+      </div>
+      <div><label>Sector</label><br>
+        <select onchange="cobSetFil('secId',this.value)">${secOpts}</select>
+      </div>
+      <div style="margin-left:auto;align-self:flex-end;font-size:11px;color:var(--t3)">
+        ${pending.length} vacante${pending.length!==1?'s':''} sin cubrir
+      </div>
+    </div>`;
+
+  // ── Empty state ───────────────────────────────────────────────────────────
+  if(!days.length){
+    body.innerHTML=filterBar+`
+      <div style="text-align:center;padding:48px 20px;color:var(--t3)">
         <div style="font-size:32px;margin-bottom:12px">✅</div>
         <div style="font-size:15px;font-weight:600;color:var(--green)">Sin coberturas pendientes</div>
-        <div style="font-size:12px;margin-top:6px">Todas las vacantes están cubiertas o no hay licencias con vacante activa.</div>
+        <div style="font-size:12px;margin-top:6px">No hay vacantes activas en el período seleccionado.</div>
       </div>`;
     return;
   }
 
-  let html=`<div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));padding:4px">`;
-  pending.forEach(l=>{
-    const emp=l.funcionario?fNombre(l.funcionario):'—';
-    const sec=l.funcionario?.sector?.nombre||'—';
-    const daysLeft=Math.max(0,Math.round((new Date(l.fecha_hasta+'T12:00:00')-new Date(today+'T12:00:00'))/86400000));
-    const urgency=daysLeft<=3?'cr':daysLeft<=7?'ca':'cg';
-    const sugs=isSup?getSuplenteSugeridos(l):[];
-    const sugHtml=sugs.length
-      ? sugs.map(s=>{
+  // ── Render agenda ─────────────────────────────────────────────────────────
+  const TURNO_LABEL={M:'Mañana',T:'Tarde',TS:'Tarde',V:'Vespertino',N:'Noche',NO:'Noche',ROT:'Rotativo'};
+  let agendaHtml='';
+
+  days.forEach(day=>{
+    const lics=dayMap.get(day);
+    const isToday=day===today;
+    const dayLabel=isToday?'Hoy — '+fmtLong(day):fmtLong(day);
+    agendaHtml+=`<div class="cob-day-hdr">
+      <span${isToday?' style="color:var(--blue)"':''}>${dayLabel}</span>
+      <span class="chip ca" style="font-size:10px">${lics.length} vacante${lics.length>1?'s':''}</span>
+    </div>`;
+
+    lics.forEach(l=>{
+      const emp=l.funcionario?fNombre(l.funcionario):'—';
+      const sec=l.funcionario?.sector?.nombre||'—';
+      const turno=TURNO_LABEL[String(l.funcionario?.turno_fijo||'').toUpperCase()]||l.funcionario?.turno_fijo||'—';
+      const daysLeft=Math.max(0,Math.round((new Date(l.fecha_hasta+'T12:00:00')-todayD)/86400000));
+      const totalDias=Math.round((new Date(l.fecha_hasta+'T12:00:00')-new Date(l.fecha_desde+'T12:00:00'))/86400000)+1;
+      const urgColor=daysLeft<=3?'var(--red)':daysLeft<=7?'var(--amber)':'var(--t3)';
+      const urgLabel=daysLeft===0?'Vence hoy':daysLeft===1?'Vence mañana':`Quedan ${daysLeft} días`;
+      const tipoChip=`<span class="chip cn" style="font-size:9px">${l.tipo||'Licencia'}</span>`;
+      const sugs=isSup?getSuplenteSugeridos(l):[];
+
+      let supHtml='';
+      if(sugs.length){
+        supHtml=sugs.map(s=>{
           const nm=fNombre(s);
           const sc=s.sector?.nombre||s.clinica?.nombre||'';
           const g=DB.turnos.filter(t=>t.funcionario_id===s.id&&isW(t.codigo)).length;
-          return `<button class="btn bg sm" style="width:100%;text-align:left;padding:8px 10px;justify-content:space-between"
-            onclick="asignarSuplenteLic(${l.id},'${s.id}','${nm.replace(/'/g,"\\'")}')">
-            <span>👤 <strong>${nm}</strong><span style="font-size:10px;color:var(--t2);margin-left:6px">${sc}</span></span>
-            <span style="font-size:10px;color:var(--t3)">${g} guard.</span>
+          // UUIDs quoted safely with JSON.stringify
+          const cb=`asignarSuplenteLic(${JSON.stringify(l.id)},${JSON.stringify(s.id)},${JSON.stringify(nm)})`;
+          return `<button class="cob-sup-btn" onclick="${cb.replace(/"/g,'&quot;')}">
+            👤 <span>${nm}</span>
+            <span class="gsec">${sc||''}${g?' · '+g+' gd':''}</span>
           </button>`;
-        }).join('')
-      : (isSup
-          ? '<p style="font-size:11px;color:var(--t3);margin:6px 0">Sin suplentes disponibles en ese período.</p>'
-          : '<p style="font-size:11px;color:var(--t3);margin:6px 0">Requiere acción de supervisor.</p>');
+        }).join('');
+      } else {
+        supHtml=`<span style="font-size:11px;color:var(--t3);padding:4px 0">${
+          isSup?'Sin suplentes disponibles en este período':'Acción de supervisor'}</span>`;
+      }
 
-    html+=`<div class="card" style="border-left:3px solid var(--${urgency==='cr'?'red':urgency==='ca'?'amber':'green'})">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-        <div>
-          <div style="font-weight:700;font-size:13px">${emp}</div>
-          <div style="font-size:11px;color:var(--t2)">${sec} · <span class="chip ${urgency==='cr'?'cn':'cn'}">${l.tipo}</span></div>
-        </div>
-        <span class="chip ${urgency}" style="flex-shrink:0">${daysLeft===0?'Hoy':daysLeft===1?'1 día':daysLeft+' días'}</span>
-      </div>
-      <div style="font-size:11px;color:var(--t2);margin-bottom:10px">
-        📅 ${fmtDate(l.fecha_desde)} → ${fmtDate(l.fecha_hasta)}
-        ${l.observaciones?`<div style="margin-top:2px;font-size:10px;color:var(--t3)">${l.observaciones}</div>`:''}
-      </div>
-      <div style="font-size:11px;color:var(--t2);font-weight:600;margin-bottom:6px">${sugs.length?'Suplentes sugeridos:':'Cobertura:'}</div>
-      <div style="display:flex;flex-direction:column;gap:4px">${sugHtml}</div>
-    </div>`;
+      agendaHtml+=`
+        <div class="cob-row">
+          <div class="cob-row-info">
+            <div class="name">${emp}</div>
+            <div class="meta">${sec} · ${tipoChip} · <strong>${turno}</strong></div>
+            <div class="dates">📅 ${fmt(l.fecha_desde)} → ${fmt(l.fecha_hasta)} · ${totalDias} días en total · <span style="color:${urgColor};font-weight:600">${urgLabel}</span></div>
+            ${l.observaciones?`<div style="font-size:10px;color:var(--t3);margin-top:3px">💬 ${l.observaciones}</div>`:''}
+          </div>
+          <div class="cob-row-sugs">${supHtml}</div>
+        </div>`;
+    });
   });
-  html+='</div>';
 
-  const count=pending.length;
-  body.innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <span style="font-size:13px;font-weight:600">${count} vacante${count>1?'s':''} sin cubrir</span>
-      <span style="font-size:11px;color:var(--t3)">Hacé click en un suplente para asignarlo</span>
-    </div>
-    ${html}`;
+  body.innerHTML=filterBar+`<div>${agendaHtml}</div>`;
 }
 
 function renderLAR(){

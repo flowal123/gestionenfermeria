@@ -131,6 +131,22 @@ tr:hover td{background:rgba(255,255,255,.018);}
 @keyframes b7{0%,100%{opacity:1}50%{opacity:.45}}
 @keyframes fadeOut{to{opacity:0;transform:translateX(20px)}}
 
+/* COBERTURA AGENDA */
+.cob-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:10px 12px;background:var(--card2);border-radius:8px;border:1px solid var(--b);}
+.cob-filters label{font-size:10px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.cob-filters select{font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--b2);background:var(--card);color:var(--t);cursor:pointer;}
+.cob-day-hdr{display:flex;align-items:center;gap:10px;margin:16px 0 6px;font-size:11px;font-weight:700;color:var(--t2);text-transform:capitalize;}
+.cob-day-hdr::after{content:'';flex:1;height:1px;background:var(--b2);}
+.cob-row{display:flex;align-items:stretch;gap:0;background:var(--card2);border:1px solid var(--b);border-radius:8px;overflow:hidden;margin-bottom:6px;}
+.cob-row-info{padding:10px 14px;flex:1;min-width:0;}
+.cob-row-info .name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cob-row-info .meta{font-size:11px;color:var(--t2);margin-top:2px;}
+.cob-row-info .dates{font-size:10px;color:var(--t3);margin-top:3px;}
+.cob-row-sugs{padding:8px 10px;border-left:1px solid var(--b);display:flex;flex-direction:column;gap:4px;justify-content:center;min-width:220px;max-width:280px;}
+.cob-sup-btn{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;border:1px solid var(--b2);background:var(--card);cursor:pointer;font-size:11px;font-weight:600;color:var(--t);transition:background .1s;}
+.cob-sup-btn:hover{background:var(--blue);color:#fff;border-color:var(--blue);}
+.cob-sup-btn .gsec{font-size:10px;font-weight:400;color:inherit;opacity:.7;margin-left:auto;flex-shrink:0;}
+
 /* SECTION TITLE */
 .stit{font-family:var(--ff-display);font-weight:700;font-size:12px;color:var(--t2);margin-bottom:10px;display:flex;align-items:center;gap:10px;text-transform:uppercase;letter-spacing:.5px;}
 .stit::after{content:'';flex:1;height:1px;background:var(--b);}
