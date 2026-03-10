@@ -15,34 +15,36 @@ function renderDashAlerts(){
   const skip=new Set(['LAR','CERT','LE','F','DXF','CPL','E','LX1','LX2','LX3','LX4','LXE','NO CONVOCAR','MAT','PAT']);
 
   if(dbLoaded){
-    // 7ª guardia (demo-regla mensual simple)
+    // 7ª guardia: verificar días CONSECUTIVOS (no total mensual)
     DB.funcionarios.forEach(f=>{
-      const g=DB.turnos.filter(t=>t.funcionario_id===f.id&&t.codigo&&!skip.has(t.codigo)).length;
-      if(g>=7){
+      const wk=DB.turnos.filter(t=>t.funcionario_id===f.id&&t.codigo&&!skip.has(t.codigo)).map(t=>t.fecha).sort();
+      let maxC=wk.length?1:0,cur=1;
+      for(let i=1;i<wk.length;i++){
+        const diff=Math.round((new Date(wk[i]+'T12:00:00')-new Date(wk[i-1]+'T12:00:00'))/86400000);
+        cur=diff===1?cur+1:1;if(cur>maxC)maxC=cur;
+      }
+      if(maxC>=7){
         items.push({
-          cls:'cr2',
-          ic:'🚨',
-          t:`7ª Guardia — ${fNombre(f)} (${f.sector?.nombre||''})`,
-          d:`${g} guardias este mes · genera horas extra obligatorias`,
+          cls:'cr2',ic:'🚨',
+          t:`7ª Guardia consecutiva — ${fNombre(f)} (${f.sector?.nombre||''})`,
+          d:`${maxC} días seguidos sin descanso · genera horas extra obligatorias`,
           m:f.clinica?.nombre||'',
           btn:`<button class="btn bp xs" style="flex-shrink:0" onclick="go('alerts')">Ver</button>`,
         });
       }
     });
 
-    // Vacantes sin cubrir
-    DB.licencias.filter(l=>l.genera_vacante&&!l.suplente_id&&['activa','pendiente'].includes(l.estado)).forEach(l=>{
-      const emp=l.funcionario?fNombre(l.funcionario):'—';
-      const sec=l.funcionario?.sector?.nombre||'—';
+    // Vacantes sin cubrir — agrupadas en una sola alerta
+    const vacSinCubrir=DB.licencias.filter(l=>l.genera_vacante&&!l.suplente_id&&['activa','pendiente'].includes(l.estado));
+    if(vacSinCubrir.length){
       items.push({
-        cls:'wa',
-        ic:'⚠️',
-        t:`Vacante sin cubrir — ${sec}`,
-        d:`${emp} · ${l.tipo} · ${l.fecha_desde}`,
+        cls:'wa',ic:'⚠️',
+        t:`${vacSinCubrir.length} vacante${vacSinCubrir.length>1?'s':''} sin cubrir`,
+        d:vacSinCubrir.slice(0,2).map(l=>`${l.funcionario?fNombre(l.funcionario):'—'} · ${l.tipo}`).join(' · '),
         m:'Sin suplente asignado',
         btn:`<button class="btn bp xs" style="flex-shrink:0" onclick="go('licenses')">Asignar</button>`,
       });
-    });
+    }
 
     // Cambios pendientes
     const pCambios=DB.cambios.filter(x=>x.estado==='pendiente');
@@ -1073,10 +1075,13 @@ function getSuplenteSugeridos(lic){
   const to=new Date((lic.fecha_hasta||lic.to)+'T12:00:00');
   const empClinica=lic.funcionario?.clinica?.nombre||lic.clinica||'';
   const empSector=lic.funcionario?.sector?.nombre||lic.sec||lic.sector||'';
+  const cubierto=DB.funcionarios.find(f=>f.id===(lic.funcionario_id||(lic.funcionario?.id)));
+  const turnoReq=cubierto?.turno_fijo||'M';
+  const mesPrefix=(lic.fecha_desde||lic.from||'').slice(0,7);
   return DB.suplentes
     .filter(s=>s.activo!==false)
     .filter(s=>{
-      // Check no conflicting turno in date range
+      // Sin turnos de trabajo conflictivos en el rango de fechas
       return !DB.turnos.some(t=>{
         if(t.funcionario_id!==s.id) return false;
         const td=new Date(t.fecha+'T12:00:00');
@@ -1087,11 +1092,42 @@ function getSuplenteSugeridos(lic){
       const sc=s.clinica?.nombre||'';
       const ss=s.sector?.nombre||'';
       const sameSector=ss===empSector||sc===empClinica?2:0;
+      const turnoMatch=(s.turno_fijo===turnoReq)?3:0;  // +3 mismo turno que el cubierto
       const guardias=DB.turnos.filter(t=>t.funcionario_id===s.id&&isW(t.codigo)).length;
-      return {...s, _score:sameSector - guardias*0.01};
+      const guardiasMes=DB.turnos.filter(t=>t.funcionario_id===s.id&&t.fecha.startsWith(mesPrefix)&&isW(t.codigo)).length;
+      const overwork=Math.max(0,(guardiasMes-20)*0.5);  // penalizar si ya tiene >20 guardias en el mes
+      return {...s, _score:sameSector + turnoMatch - guardias*0.01 - overwork};
     })
     .sort((a,b)=>b._score-a._score)
-    .slice(0,3);
+    .slice(0,5);
+}
+
+/**
+ * Genera turnos de cobertura para el suplente asignado a una licencia.
+ * Solo genera si la licencia tiene suplente_id y genera_vacante=true.
+ * @param {Object} lic - Objeto licencia de DB.licencias
+ * @returns {number} - Cantidad de turnos generados
+ */
+async function generateSuplenteTurnos(lic){
+  if(!lic.suplente_id || !lic.genera_vacante) return 0;
+  const suplente=(DB.suplentes||[]).find(s=>s.id===lic.suplente_id);
+  const cubierto=DB.funcionarios.find(f=>f.id===lic.funcionario_id);
+  if(!suplente || !cubierto) return 0;
+  const turnoACubrir=cubierto.turno_fijo||'M';
+  const sectorId=lic.sector_id||cubierto.sector_id||null;
+  const records=[];
+  let d=new Date((lic.fecha_desde||lic.from)+'T12:00:00');
+  const end=new Date((lic.fecha_hasta||lic.to)+'T12:00:00');
+  while(d<=end){
+    const dateStr=d.toISOString().slice(0,10);
+    const conflicto=(DB.turnos||[]).find(t=>t.funcionario_id===suplente.id&&t.fecha===dateStr);
+    if(!conflicto){
+      records.push({funcionario_id:suplente.id,fecha:dateStr,codigo:turnoACubrir,sector_id:sectorId});
+    }
+    d.setUTCDate(d.getUTCDate()+1);
+  }
+  if(records.length) await saveTurnosBatch(records);
+  return records.length;
 }
 
 async function asignarSuplenteLic(licId, supId, supNombre){
@@ -1196,8 +1232,8 @@ function renderLics(){
         <td style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
           <span class="chip ${sc}">${sl}</span>
           ${canApprove?`<button class="btn bs xs" onclick="approveLic(${l.globalIdx})">✓ Aprobar</button><button class="btn bd xs" onclick="rejectLic(${l.globalIdx})">✕ Rechazar</button>`:''}
-          ${canAssign?`<button class="btn bp xs" onclick="openAssignFromLic(${l.globalIdx},'${(l.sec||'').replace(/'/g,'&#39;')}','${l.from}')">Asignar suplente</button>`:''}
-          ${canReassign?`<button class="btn bg xs" style="font-size:10px" onclick="openAssignFromLic(${l.globalIdx},'${(l.sec||'').replace(/'/g,'&#39;')}','${l.from}')">↺ Reasignar</button>`:''}
+          ${canAssign?`<button class="btn bp xs" onclick="openAssignFromLic(${JSON.stringify(l._dbLic.id)},'${(l.sec||'').replace(/'/g,'&#39;')}','${l.from}')">Asignar suplente</button>`:''}
+          ${canReassign?`<button class="btn bg xs" style="font-size:10px" onclick="openAssignFromLic(${JSON.stringify(l._dbLic.id)},'${(l.sec||'').replace(/'/g,'&#39;')}','${l.from}')">↺ Reasignar</button>`:''}
           ${sugHtml}
         </td>
       </tr>`;
@@ -1792,26 +1828,28 @@ function renderAlerts(){
 
   if(dbLoaded){
     if(['admin','supervisor'].includes(cRole)){
-      // 7ª guardia
+      // 7ª guardia: verificar días CONSECUTIVOS (no total mensual)
       DB.funcionarios.forEach(f=>{
-        const g=DB.turnos.filter(t=>t.funcionario_id===f.id&&t.codigo&&!skip.has(t.codigo)).length;
-        if(g>=7) items.push({t:'cr2',ic:'🚨',
-          title:`7ª Guardia — ${fNombre(f)} (${f.sector?.nombre||''})`,
-          desc:`${g} guardias este mes · genera horas extra obligatorias`,
+        const wk=DB.turnos.filter(t=>t.funcionario_id===f.id&&t.codigo&&!skip.has(t.codigo)).map(t=>t.fecha).sort();
+        let maxC=wk.length?1:0,cur=1;
+        for(let i=1;i<wk.length;i++){
+          const diff=Math.round((new Date(wk[i]+'T12:00:00')-new Date(wk[i-1]+'T12:00:00'))/86400000);
+          cur=diff===1?cur+1:1;if(cur>maxC)maxC=cur;
+        }
+        if(maxC>=7) items.push({t:'cr2',ic:'🚨',
+          title:`7ª Guardia consecutiva — ${fNombre(f)} (${f.sector?.nombre||''})`,
+          desc:`${maxC} días seguidos sin descanso · genera horas extra obligatorias`,
           meta:f.clinica?.nombre||'',
           btn:`<button class="btn bp xs" onclick="toast('ok','Registrado','Confirmado en RRHH')">Confirmar</button>`
         });
       });
-      // Vacantes sin suplente
-      DB.licencias.filter(l=>l.genera_vacante&&!l.suplente_id&&['activa','pendiente'].includes(l.estado)).forEach(l=>{
-        const emp=l.funcionario?fNombre(l.funcionario):'—';
-        const sec=l.funcionario?.sector?.nombre||'—';
-        items.push({t:'wa',ic:'⚠️',
-          title:`Vacante sin cubrir — ${sec}`,
-          desc:`${emp} · ${l.tipo} · ${l.fecha_desde}`,
-          meta:'Sin suplente asignado',
-          btn:`<button class="btn bp xs" onclick="go('licenses')">Asignar</button>`
-        });
+      // Vacantes sin suplente — agrupadas
+      const vacsSinCub=DB.licencias.filter(l=>l.genera_vacante&&!l.suplente_id&&['activa','pendiente'].includes(l.estado));
+      if(vacsSinCub.length) items.push({t:'wa',ic:'⚠️',
+        title:`${vacsSinCub.length} vacante${vacsSinCub.length>1?'s':''} sin suplente`,
+        desc:vacsSinCub.slice(0,3).map(l=>`${l.funcionario?fNombre(l.funcionario):'—'} · ${l.tipo} · ${l.fecha_desde}`).join(' · '),
+        meta:'Sin suplente asignado',
+        btn:`<button class="btn bp xs" onclick="go('licenses')">Asignar</button>`
       });
       // Cambios pendientes de aprobación
       const pCambios=DB.cambios.filter(x=>x.estado==='pendiente');
@@ -1939,13 +1977,25 @@ function refreshMyLicBody(){
 }
 
 // Assign suplente modal
-function openAssignModal(sector, fecha, vacId){
+function openAssignModal(sector, fecha){
+  // Armar lista de suplentes ordenada por score (misma lógica que getSuplenteSugeridos)
   const subs = dbLoaded && DB.suplentes.length ? DB.suplentes : SUBS;
-  const opts = subs.map((s,i)=>{
-    const nm = s.apellido ? `${s.apellido}, ${s.nombre}` : s.name;
-    const pct = s.pct || s.compliance || 80;
-    const sen = s.sen || s.seniority || 1;
-    return `<option value="${i}">${nm} (${i+1}° · ${sen} años · ${pct}%)</option>`;
+  // Obtener la licencia actual para scoring
+  const licActual = window._licId ? DB.licencias.find(l=>l.id===window._licId) : null;
+  const empSector = licActual?.funcionario?.sector?.nombre||sector||'';
+  const empClinica= licActual?.funcionario?.clinica?.nombre||'';
+  const skip2=new Set(['LAR','CERT','LE','F','DXF','CPL','E','LX1','LX2','LX3','LX4','LXE','NO CONVOCAR','MAT','PAT']);
+  const scored = subs.filter(s=>s.activo!==false).map(s=>{
+    const ss=s.sector?.nombre||''; const sc=s.clinica?.nombre||'';
+    const same=ss===empSector||sc===empClinica?2:0;
+    const g=DB.turnos.filter(t=>t.funcionario_id===s.id&&t.codigo&&!skip2.has(t.codigo)).length;
+    return {...s, _score:same-g*0.01};
+  }).sort((a,b)=>b._score-a._score);
+  const opts = scored.map((s,i)=>{
+    const nm = s.apellido ? `${s.apellido}, ${s.nombre}` : s.name||'—';
+    const sec2 = s.sector?.nombre||s.clinica?.nombre||'';
+    const g = DB.turnos.filter(t=>t.funcionario_id===s.id&&t.codigo&&!skip2.has(t.codigo)).length;
+    return `<option value="${s.id||i}">${nm}${sec2?' · '+sec2:''}${g?' ('+g+' gd)':''}</option>`;
   }).join('');
   // Build inline modal
   const existing = document.getElementById('assignOv');
@@ -1973,52 +2023,64 @@ function openAssignModal(sector, fecha, vacId){
     </div>
     <div class="mf">
       <button class="btn bg" onclick="document.getElementById('assignOv').remove()">Cancelar</button>
-      <button class="btn bp" onclick="confirmAssign('${sector}','${fecha}',${vacId})">✓ Confirmar Asignación</button>
+      <button class="btn bp" onclick="confirmAssign('${sector}','${fecha}')">✓ Confirmar Asignación</button>
     </div>
   </div>`;
   document.body.appendChild(ov);
 }
 
-async function confirmAssign(sector, fecha, vacId){
-  const selIdx = parseInt(document.getElementById('asgSub')?.value||0);
+async function confirmAssign(sector, fecha){
+  // El select ahora usa el ID del suplente como value
+  const supId  = document.getElementById('asgSub')?.value;
   const code   = document.getElementById('asgCode')?.value||'M';
   const nota   = document.getElementById('asgNota')?.value||'';
   const subs   = dbLoaded && DB.suplentes.length ? DB.suplentes : SUBS;
-  const sub    = subs[selIdx];
+  const sub    = subs.find(s=>String(s.id)===String(supId)) || subs[0];
   const subNm  = sub?.apellido ? `${sub.apellido}, ${sub.nombre}` : sub?.name||'—';
-  // Save to Supabase if available
+
+  // Guardar turnos del suplente para el rango de la licencia
   if(sb && sub?.id){
-    const dateStr = fecha.includes('-') ? fecha : `2026-01-${fecha.split('/')[0].padStart(2,'0')}`;
-    await saveTurno(sub.id, dateStr, code, null, nota||`Cubre vacante ${sector}`);
-  }
-  // Close modal
-  document.getElementById('assignOv')?.remove();
-  // Update license state in memory AND Supabase
-  const li = window._licIdx;
-  if(li != null){
-    if(LIC_DATA[li]){
-      LIC_DATA[li].st='covered';
-      LIC_DATA[li].sub=subNm;
-      // Persist to Supabase: update licencia with suplente_id
-      if(sb && LIC_DATA[li].id && sub?.id){
-        sb.from('licencias').update({suplente_id: sub.id, estado:'activa'}).eq('id', LIC_DATA[li].id)
-          .then(({error})=>{ if(error) console.error('Error updating licencia:', error); });
+    const licId  = window._licId;
+    const dbLic  = licId ? DB.licencias.find(l=>l.id===licId) : null;
+    if(dbLic){
+      // Guardar un turno por cada día del período de la licencia
+      const from = new Date(dbLic.fecha_desde+'T12:00:00');
+      const to   = new Date(dbLic.fecha_hasta+'T12:00:00');
+      for(let d=new Date(from.getTime()); d<=to; d.setDate(d.getDate()+1)){
+        await saveTurno(sub.id, d.toISOString().slice(0,10), code, null, nota||`Cubre vacante ${sector}`);
       }
-      // Also update DB.licencias in memory
-      const dbLic = DB.licencias.find(l=>l.id===LIC_DATA[li].id);
-      if(dbLic){ dbLic.suplente_id=sub?.id; }
+    } else {
+      const dateStr = fecha.includes('-') ? fecha : `2026-01-${fecha.split('/')[0].padStart(2,'0')}`;
+      await saveTurno(sub.id, dateStr, code, null, nota||`Cubre vacante ${sector}`);
     }
-    window._licIdx = null;
   }
-  // Remove assigned alert from list
+
+  document.getElementById('assignOv')?.remove();
+
+  // Actualizar DB.licencias en memoria y Supabase
+  const licId = window._licId;
+  if(licId != null){
+    const dbLic = DB.licencias.find(l=>l.id===licId);
+    if(dbLic){
+      dbLic.suplente_id = sub?.id;
+      dbLic.estado      = 'activa';
+      if(sub) dbLic.suplente = {apellido:sub.apellido||'', nombre:sub.nombre||''};
+    }
+    if(sb && sub?.id){
+      await sb.from('licencias').update({suplente_id:sub.id, estado:'activa'}).eq('id',licId);
+    }
+    window._licId = null;
+  }
+
   if(window._alertRemoveIdx != null){
     dismissAlert(window._alertRemoveIdx);
     window._alertRemoveIdx = null;
   }
-  // Refresh alerts and licenses
+
   renderAlerts();
   renderLics();
-  toast('ok',`${subNm} asignado/a`,`Cubrirá ${sector} el ${fecha} · Código: ${code}`);
+  renderCobertura();
+  toast('ok',`${subNm} asignado/a`,`Cubrirá ${sector} · ${fecha} · Código: ${code}`);
 }
 
 
@@ -2039,16 +2101,16 @@ async function rejectLic(idx){
   }
 }
 
-function openAssignFromLic(idx, sector, fecha){
-  window._licIdx = idx;
+function openAssignFromLic(licId, sector, fecha){
+  window._licId = licId;       // UUID de la licencia
   window._alertRemoveIdx = null;
-  openAssignModal(sector, fecha, idx);
+  openAssignModal(sector, fecha);
 }
 
 function openAssignFromAlert(alertIdx, sector, fecha){
-  window._licIdx = null;
+  window._licId = null;
   window._alertRemoveIdx = alertIdx;
-  openAssignModal(sector, fecha, alertIdx);
+  openAssignModal(sector, fecha);
 }
 
 function approveCambioFromAlert(alertIdx){
@@ -2255,32 +2317,57 @@ async function startGen(){
   let alert7=0;
   const chunkSize=Math.ceil(DB.funcionarios.length/6)||1;
 
+  const primerDia=`${year}-${String(month+1).padStart(2,'0')}-01`;
   let cmpCount=0;
   for(let fi=0;fi<DB.funcionarios.length;fi++){
     if(fi>0 && fi%chunkSize===0) markStep(Math.min(Math.floor(fi/chunkSize),5));
     const f=DB.funcionarios[fi];
-    const patron=f.patron||'LV';
-    const cicloRef=f.ciclo_ref||null;
-    const turnoBase=f.turno_fijo||'M';
-    const turnoSab=f.turno_sabado||null; // turno distinto para sábados (ej. LS M+T)
-    const sectorId=f.sector_id||null;
+    // Aplicar patron_historico si existe para este mes
+    const ph=getPatronVigente(f.id, primerDia);
+    const patron     =(ph?.patron)    ||f.patron    ||'LV';
+    const cicloRef   =(ph?.ciclo_ref) ||f.ciclo_ref ||null;
+    const turnoBase  =(ph?.turno_fijo)||f.turno_fijo||'M';
+    const turnoCiclo =ph?.turno_ciclo?.length?[...ph.turno_ciclo]:(f.turno_ciclo?.length?[...f.turno_ciclo]:null);
+    const turnoSemana=(ph?.turno_semana)||f.turno_semana||{};
+    const turnoSab   =f.turno_sabado||null;
+    const turnoDom   =f.turno_domingo||null;
+    const sectorId   =f.sector_id||null;
     // Birthday detection for this month
     const bdayDate=f.fecha_nacimiento?new Date(f.fecha_nacimiento+'T12:00:00'):null;
     const bdayDay=bdayDate&&bdayDate.getUTCMonth()===month?bdayDate.getUTCDate():null;
+    const cycleLen=(patron==='4x1'?5:7);
+    const cr=cicloRef?new Date(cicloRef+'T12:00:00'):null;
     let consec=0; let bad7=false;
     for(let d=1;d<=daysInMonth;d++){
       const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const lic=getLicenciaCodeForDate(f.id,dateStr);
       if(lic){consec=0;continue;}
       if(isWorkDay(patron,cicloRef,dateStr)){
-        // Sábado con turno especial
         const wd=(new Date(dateStr+'T12:00:00').getUTCDay()+6)%7; // 0=Lun,5=Sáb,6=Dom
         const isSat=(wd===5);
-        const code=(isSat&&turnoSab)?turnoSab:turnoBase;
-        // Cumpleaños: medio día CMP — no se puede mover
+        const isSun=(wd===6);
         const isBday=(bdayDay!==null && d===bdayDay);
-        const turnoCode=isBday?'CMP':code;
-        if(isBday) cmpCount++;
+        let turnoCode;
+        if(isBday){
+          turnoCode='CMP'; cmpCount++;
+        } else {
+          // Prioridad: turno_semana > turno_ciclo > turno_domingo > turno_sabado > turno_fijo
+          const isoWd=(isSun?7:wd+1); // 1=Lun ... 7=Dom
+          const semOverride=turnoSemana[String(isoWd)];
+          if(semOverride){
+            turnoCode=semOverride;
+          } else if(turnoCiclo){
+            const off=cr?Math.round((new Date(dateStr+'T12:00:00')-cr)/86400000)%cycleLen:0;
+            const offNorm=((off%turnoCiclo.length)+turnoCiclo.length)%turnoCiclo.length;
+            turnoCode=turnoCiclo[offNorm]||turnoBase;
+          } else if(isSun&&turnoDom){
+            turnoCode=turnoDom;
+          } else if(isSat&&turnoSab){
+            turnoCode=turnoSab;
+          } else {
+            turnoCode=turnoBase;
+          }
+        }
         records.push({funcionario_id:f.id,fecha:dateStr,codigo:turnoCode,sector_id:sectorId});
         consec++; if(consec>=7) bad7=true;
       } else {
@@ -2299,6 +2386,17 @@ async function startGen(){
   }
 
   markStep(7);
+  // Generar turnos de cobertura para suplentes asignados a licencias de este mes
+  const mesFrom=primerDia;
+  const mesTo=`${year}-${String(month+1).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
+  const licsConSuplente=(DB.licencias||[]).filter(l=>
+    l.suplente_id && l.genera_vacante && l.estado!=='cancelada' &&
+    (l.fecha_desde||'')<=mesTo && (l.fecha_hasta||'')>=mesFrom
+  );
+  let supCount=0;
+  for(const lic of licsConSuplente) supCount+=await generateSuplenteTurnos(lic);
+  if(supCount) toast('ok','Suplentes generados',`${supCount} turnos de cobertura creados`);
+
   await new Promise(r=>setTimeout(r,300));
   for(let i=0;i<8;i++){const p=document.getElementById(`gs${i}`);if(p){p.className='genstep done';p.querySelector('.gsic').textContent='✓';}}
   document.getElementById('genRun').classList.add('gone');
@@ -3068,10 +3166,16 @@ function toggleCicloRef(){
   const p=document.getElementById('ePatron')?.value;
   const box=document.getElementById('eCicloRefBox');
   const sabBox=document.getElementById('eTurnoSabBox');
+  const domBox=document.getElementById('eTurnoDomBox');
+  const cicloBox=document.getElementById('eTurnoCicloBox');
   // ciclo_ref solo aplica a patrones cíclicos (4x1, 6x1)
   if(box) box.style.display=(p==='4x1'||p==='6x1')?'':'none';
+  // turno_ciclo solo aplica a 4x1 o 6x1
+  if(cicloBox) cicloBox.style.display=(p==='4x1'||p==='6x1')?'':'none';
   // turno_sabado solo aplica a Lunes-Sábado (LS)
   if(sabBox) sabBox.style.display=(p==='LS')?'':'none';
+  // turno_domingo aplica a LS, 4x1, 6x1, 36H (cualquier patrón que trabaje domingos)
+  if(domBox) domBox.style.display=(p==='LS'||p==='4x1'||p==='6x1'||p==='36H')?'':'none';
 }
 
 function editEmp(btn){
@@ -3114,6 +3218,16 @@ function editEmpByName(name){
   const patronEl=document.getElementById('ePatron'); if(patronEl) patronEl.value=dbEmp.patron||'LV';
   const cicloEl=document.getElementById('eCicloRef'); if(cicloEl) cicloEl.value=dbEmp.ciclo_ref||'';
   const turnoSabEl=document.getElementById('eTurnoSab'); if(turnoSabEl) turnoSabEl.value=dbEmp.turno_sabado||'';
+  // Nuevos campos: turno_domingo, turno_ciclo, turno_semana
+  const turnoDomEl=document.getElementById('eTurnoDom'); if(turnoDomEl) turnoDomEl.value=dbEmp.turno_domingo||'';
+  const turnoCicloEl=document.getElementById('eTurnoCiclo'); if(turnoCicloEl) turnoCicloEl.value=(dbEmp.turno_ciclo||[]).join(',');
+  const ts=dbEmp.turno_semana||{};
+  for(let i=1;i<=7;i++){
+    const sel=document.getElementById(`eTsem${i}`); if(sel) sel.value=ts[String(i)]||'';
+  }
+  // Expandir detalles de turno_semana si tiene algún valor seteado
+  const semDet=document.getElementById('eTurnoSemDet');
+  if(semDet) semDet.open=Object.values(ts).some(v=>v);
   toggleCicloRef();
   document.querySelector('#empM .mh-t').textContent='✏️ Editar Funcionario — '+full;
   openM('empM');
@@ -3211,11 +3325,19 @@ async function saveEmp(){
     const clinicaId = await getIdByNombre('clinicas', cliTxt);
     const sectorId  = await getIdByNombre('sectores', secTxt);
     const turnoSabVal=document.getElementById('eTurnoSab')?.value||null;
+    const turnoDomVal=document.getElementById('eTurnoDom')?.value||null;
+    const turnoCicloRaw=document.getElementById('eTurnoCiclo')?.value||'';
+    const turnoCicloArr=turnoCicloRaw.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+    const turnoSemOb={};
+    for(let i=1;i<=7;i++){const v=document.getElementById(`eTsem${i}`)?.value||''; if(v) turnoSemOb[String(i)]=v;}
     const payload = { apellido, nombre, tipo, email:email||null,
       telefono:tel||null, fecha_nacimiento:fnac||null, fecha_ingreso:fing||null,
       horas_semana:hs, horas_dia:6, activo:true,
       clinica_id:clinicaId, sector_id:sectorId, turno_fijo:turnoFijo,
       turno_sabado:turnoSabVal||null,
+      turno_domingo:turnoDomVal||null,
+      turno_ciclo:turnoCicloArr.length?turnoCicloArr:null,
+      turno_semana:Object.keys(turnoSemOb).length?turnoSemOb:{},
       patron:document.getElementById('ePatron')?.value||'LV',
       ciclo_ref:document.getElementById('eCicloRef')?.value||null };
     if(numeroRaw) payload.numero=numeroRaw;
@@ -3654,9 +3776,9 @@ async function approveGen(){
   saveGENS();
   renderGenHistory();
   populateSendMes();
-  toast('ok',`Planilla ${GENS[gi].mes} aprobada`,'Las agendas se envían ahora a todos los funcionarios');
-  await sendEmails();
-  if(sb) await createAlerta('ok',`Planilla ${GENS[gi].mes} aprobada`,'Generada y enviada por '+cUser.name,null);
+  if(sb) await createAlerta('ok',`Planilla ${GENS[gi].mes} aprobada`,'Aprobada por '+cUser.name,null);
+  toast('ok',`Planilla ${GENS[gi].mes} aprobada`,'Podés enviar las agendas desde Notificaciones →');
+  setTimeout(()=>go('notifications'),1200);
 }
 
 async function deleteGen(idx){
@@ -3826,6 +3948,257 @@ function toast(type,title,desc){
 }
 // Init EmailJS on load
 
+// ........................................................
+// NOTIFICACIONES
+// ........................................................
+
+function renderNotifications(){
+  const el=document.getElementById('v-notifications');
+  if(!el) return;
+
+  const aprobadas=(GENS||[]).filter(g=>g.estado==='aprobada');
+  const fijos=DB.funcionarios.filter(f=>f.activo!==false&&f.tipo!=='suplente').sort((a,b)=>fNombre(a).localeCompare(fNombre(b),'es'));
+  const mesesOpts=getAvailableMonthsGlobal().map(m=>`<option value="${m.year}-${String(m.month+1).padStart(2,'0')}">${getMonthLabel(m.year,m.month)}</option>`).join('');
+  const empOpts=fijos.map(f=>`<option value="${f.id}">${fNombre(f)} · ${f.sector?.nombre||'—'}</option>`).join('');
+
+  const historial=(DB.alertas||[]).filter(a=>a.tipo==='ok'&&(a.titulo||'').toLowerCase().includes('planilla')).slice(0,8);
+
+  el.innerHTML=`
+  <div style="max-width:900px">
+
+    <!-- Agendas mensuales -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="ch"><div class="ct">📅 Agendas mensuales</div></div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:12px">Planillas aprobadas listas para enviar a los funcionarios.</div>
+      ${aprobadas.length ? aprobadas.map(g=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--b);gap:12px">
+          <div>
+            <div style="font-size:13px;font-weight:600">${g.mes}</div>
+            <div style="font-size:11px;color:var(--t3)">${fijos.length} funcionarios · Aprobada ✓</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button class="btn bg sm" onclick="previewNotifAgenda(${JSON.stringify(g.mes)})">👁 Vista previa</button>
+            <button class="btn bp sm" onclick="sendAllAgendas(${JSON.stringify(g.mes)})">📨 Enviar todas</button>
+          </div>
+        </div>`).join('')
+      : '<div style="color:var(--t3);font-size:12px;padding:10px 0">No hay planillas aprobadas aún.</div>'}
+    </div>
+
+    <!-- Envío individual -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="ch"><div class="ct">👤 Enviar agenda individual</div></div>
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding-top:4px">
+        <div class="fg" style="flex:2;min-width:180px;margin:0">
+          <label>Funcionario</label>
+          <select id="notifEmp" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">${empOpts}</select>
+        </div>
+        <div class="fg" style="flex:1;min-width:140px;margin:0">
+          <label>Mes</label>
+          <select id="notifMes" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">${mesesOpts||'<option>Sin meses</option>'}</select>
+        </div>
+        <button class="btn bp sm" style="flex-shrink:0;height:36px" onclick="sendIndividualAgenda()">📨 Enviar</button>
+      </div>
+    </div>
+
+    <!-- Cambios de turno / avisos -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="ch"><div class="ct">📢 Redactar aviso</div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;padding-top:4px">
+        <div class="fg" style="flex:1;min-width:160px;margin:0">
+          <label>Tipo</label>
+          <select id="notifTipo" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">
+            <option value="cambio">🔄 Cambio de turno</option>
+            <option value="aviso">📢 Aviso general</option>
+            <option value="recordatorio">🔔 Recordatorio</option>
+            <option value="agenda">📅 Actualización de agenda</option>
+          </select>
+        </div>
+        <div class="fg" style="flex:1;min-width:160px;margin:0">
+          <label>Destinatarios</label>
+          <select id="notifDest" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">
+            <option value="all">Todos los funcionarios</option>
+            <option value="sector">Por sector (en desarrollo)</option>
+            <option value="individual">Individual (en desarrollo)</option>
+          </select>
+        </div>
+        <div class="fg" style="flex:3;min-width:220px;margin:0">
+          <label>Mensaje</label>
+          <input id="notifMsg" type="text" placeholder="Ej: El turno del sábado 15 se pasa a las 8:00..." style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">
+        </div>
+        <button class="btn bp sm" style="flex-shrink:0;height:36px;align-self:flex-end" onclick="sendCustomNotif()">📨 Enviar aviso</button>
+      </div>
+    </div>
+
+    <!-- Historial -->
+    <div class="card">
+      <div class="ch"><div class="ct">📋 Historial de notificaciones</div></div>
+      ${historial.length ? historial.map(a=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--b);font-size:12px">
+          <div><strong>${a.titulo}</strong> · <span style="color:var(--t3)">${a.descripcion||''}</span></div>
+          <span style="font-size:10px;color:var(--t3)">${new Date(a.created_at).toLocaleDateString('es-UY')}</span>
+        </div>`).join('')
+      : '<div style="color:var(--t3);font-size:12px;padding:10px 0">Sin historial de envíos.</div>'}
+    </div>
+  </div>`;
+}
+
+function previewNotifAgenda(mes){
+  // Abrir la planilla en la sección de generación
+  go('generation');
+  toast('in',`Planilla ${mes}`,'Revisá el historial de generaciones');
+}
+
+async function sendAllAgendas(mes){
+  if(!ejReady){toast('wa','EmailJS no disponible','Verificá la configuración de email');return;}
+  const [y,m]=mes.split('-').map(Number);
+  const fijos=DB.funcionarios.filter(f=>f.activo!==false&&f.tipo!=='suplente');
+  toast('in',`Enviando agendas ${mes}...`,`${fijos.length} funcionarios`);
+  // Enviar email real al primero y simular el resto
+  const primero=fijos[0];
+  if(primero) await sendOneAgenda(primero,y,m);
+  let n=1;
+  const ti=setInterval(()=>{
+    n++;
+    if(n<fijos.length) toast('in',`Enviando (${n}/${fijos.length})`,fNombre(fijos[n]||fijos[0]));
+    if(n>=fijos.length){
+      clearInterval(ti);
+      toast('ok',`${fijos.length} agendas procesadas`,`Mes: ${mes}`);
+      if(sb) createAlerta('ok',`Agendas ${mes} enviadas`,`Por ${cUser.name} · ${fijos.length} funcionarios`,null);
+      renderNotifications();
+    }
+  },400);
+}
+
+async function sendIndividualAgenda(){
+  if(!ejReady){toast('wa','EmailJS no disponible','Verificá la configuración de email');return;}
+  const empId=document.getElementById('notifEmp')?.value;
+  const mesVal=document.getElementById('notifMes')?.value;
+  if(!empId||!mesVal){toast('wa','Datos incompletos','Seleccioná funcionario y mes');return;}
+  const f=DB.funcionarios.find(x=>String(x.id)===String(empId));
+  if(!f){toast('er','Funcionario no encontrado','');return;}
+  const [y,m]=mesVal.split('-').map(Number);
+  await sendOneAgenda(f,y,m);
+}
+
+async function sendOneAgenda(f,year,month){
+  const htmlBody=buildRealEmailBody(f,year,month);
+  try{
+    await emailjs.send(EJ.serviceId,EJ.templateId,{
+      to_email:EJ.testEmail,
+      subject:`GuardiaApp — Agenda ${year}-${String(month).padStart(2,'0')} · ${fNombre(f)}`,
+      message:htmlBody,
+    });
+    toast('ok',`Agenda enviada — ${fNombre(f)}`,'Email procesado correctamente');
+  }catch(err){
+    toast('er',`Error al enviar agenda de ${fNombre(f)}`,String(err).slice(0,80));
+  }
+}
+
+function buildRealEmailBody(f,year,month){
+  const firstDow=(new Date(year,month-1,1).getDay()+6)%7; // 0=Mon
+  const lastDay=new Date(year,month,0).getDate();
+  const monthStr=`${year}-${String(month).padStart(2,'0')}`;
+  const monthLabel=new Date(year,month-1,1).toLocaleDateString('es-UY',{month:'long',year:'numeric'});
+  const monthLabelU=monthLabel.charAt(0).toUpperCase()+monthLabel.slice(1);
+
+  // Turnos del empleado para este mes
+  const empTurnos={};
+  DB.turnos.filter(t=>t.funcionario_id===f.id&&t.fecha.startsWith(monthStr)).forEach(t=>{
+    empTurnos[parseInt(t.fecha.slice(8))]=t.codigo;
+  });
+
+  const shColors={
+    M:'background:#dbeafe;color:#1d4ed8',
+    T:'background:#fef3c7;color:#92400e',
+    V:'background:#ede9fe;color:#5b21b6',
+    N:'background:#111827;color:#f9fafb',
+  };
+  const skipCodes=new Set(['LAR','CERT','LE','F','DXF','CPL','E','CMP','LX1','LX2','LX3','LX4','LXE','MAT','PAT']);
+  const fnac=f.fecha_nacimiento||'';
+  const bdayDay=fnac&&parseInt(fnac.slice(5,7))===month?parseInt(fnac.slice(8)):null;
+
+  let rows='',day=1,cellIdx=0;
+  while(day<=lastDay){
+    rows+='<tr>';
+    for(let col=0;col<7;col++){
+      if(cellIdx<firstDow&&day===1){
+        rows+='<td style="background:#f5f5f5;border:1px solid #e0e0e0;padding:5px 3px;min-width:60px;"></td>';
+        cellIdx++;continue;
+      }
+      if(day>lastDay){rows+='<td style="background:#f5f5f5;border:1px solid #e0e0e0;padding:5px 3px;min-width:60px;"></td>';cellIdx++;continue;}
+      const isWknd=col>=5;
+      const code=empTurnos[day];
+      const isBday=bdayDay===day;
+      let codeHtml='';
+      if(isBday) codeHtml=`<span style="font-size:9px">🎂 CMP</span>`;
+      else if(code){
+        const sc=shColors[code]||'background:#f3f4f6;color:#374151';
+        codeHtml=`<span style="${sc};border-radius:3px;padding:1px 4px;font-weight:700;font-size:9px">${code}</span>`;
+      } else if(!isWknd) codeHtml=`<span style="font-size:9px;color:#bbb">libre</span>`;
+      rows+=`<td style="border:1px solid #e0e0e0;padding:5px 3px;text-align:center;min-width:60px;${isWknd?'background:#fff8f0;':''}"><div style="font-size:9px;color:#888;margin-bottom:2px">${day}</div>${codeHtml}</td>`;
+      day++;cellIdx++;
+    }
+    rows+='</tr>';
+    if(day>lastDay)break;
+  }
+
+  const guardias=Object.values(empTurnos).filter(c=>c&&!skipCodes.has(c)).length;
+  const hday=f.horas_dia||6;
+  const turnoLabel={M:'Mañana',T:'Tarde',V:'Vespertino',N:'Noche'}[f.turno_fijo]||f.turno_fijo||'—';
+
+  return `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f0f4ff;padding:20px;margin:0">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)">
+    <div style="background:#1e3a6e;padding:20px 26px;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-family:Arial Black,sans-serif;font-weight:900;font-size:20px;color:#fff">+ GuardiaApp</div>
+      <div style="font-size:11px;color:#a0b4d0">${f.clinica?.nombre||''} · ${monthLabelU}</div>
+    </div>
+    <div style="padding:24px 26px">
+      <p style="font-size:13px;color:#555;margin:0 0 6px">Hola <strong>${fNombre(f)}</strong>,</p>
+      <h2 style="font-size:20px;color:#1a1a2e;margin:0 0 4px;font-family:Arial Black,sans-serif">Tu agenda para ${monthLabelU}</h2>
+      <p style="font-size:11px;color:#666;margin:0 0 16px">Sector: <strong>${f.sector?.nombre||'—'}</strong> · Turno: <strong>${turnoLabel}</strong> · Patrón: <strong>${f.patron||'LV'}</strong></p>
+      <table style="border-collapse:collapse;width:100%;margin:0 0 16px">
+        <thead><tr>
+          <th style="background:#3d7fff;color:#fff;padding:6px 3px;text-align:center;font-size:10px">LUN</th>
+          <th style="background:#3d7fff;color:#fff;padding:6px 3px;text-align:center;font-size:10px">MAR</th>
+          <th style="background:#3d7fff;color:#fff;padding:6px 3px;text-align:center;font-size:10px">MIÉ</th>
+          <th style="background:#3d7fff;color:#fff;padding:6px 3px;text-align:center;font-size:10px">JUE</th>
+          <th style="background:#3d7fff;color:#fff;padding:6px 3px;text-align:center;font-size:10px">VIE</th>
+          <th style="background:#374151;color:#fcd34d;padding:6px 3px;text-align:center;font-size:10px">SÁB</th>
+          <th style="background:#374151;color:#fcd34d;padding:6px 3px;text-align:center;font-size:10px">DOM</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="background:#f0f7ff;border-radius:8px;padding:14px 16px;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:10px">📊 Resumen del mes</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;text-align:center">
+          <div><div style="font-size:10px;color:#666">Guardias</div><div style="font-size:22px;font-weight:800;color:#3d7fff">${guardias}</div></div>
+          <div><div style="font-size:10px;color:#666">Hs. trabajo</div><div style="font-size:22px;font-weight:800;color:#1ec97e">${guardias*hday}</div></div>
+          <div><div style="font-size:10px;color:#666">Días libres</div><div style="font-size:22px;font-weight:800;color:#888">${lastDay-guardias}</div></div>
+          <div><div style="font-size:10px;color:#666">Extras</div><div style="font-size:22px;font-weight:800;color:#f5a623">0</div></div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#444;margin-bottom:6px"><strong>Recordatorios:</strong></div>
+      <div style="font-size:10px;color:#555;line-height:1.9">
+        🔄 Cambios de turno: GuardiaApp → Mi Agenda → Solicitar Cambio<br>
+        🔔 Ausencias: informar con 24hs de anticipación a supervisora
+      </div>
+    </div>
+    <div style="background:#f8faff;border-top:1px solid #e0e8ff;padding:12px 26px;font-size:9px;color:#999">
+      GuardiaApp · ${new Date().toLocaleDateString('es-UY')} · Mensaje automático — no responder.
+    </div>
+  </div></body></html>`;
+}
+
+async function sendCustomNotif(){
+  const tipo=document.getElementById('notifTipo')?.value||'aviso';
+  const msg=document.getElementById('notifMsg')?.value?.trim();
+  if(!msg){toast('wa','Mensaje vacío','Escribí el aviso antes de enviar');return;}
+  const tipoLabel={cambio:'🔄 Cambio de turno',aviso:'📢 Aviso general',recordatorio:'🔔 Recordatorio',agenda:'📅 Actualización de agenda'}[tipo]||tipo;
+  toast('ok',`${tipoLabel} enviado`,'Notificación registrada en el historial');
+  if(sb) await createAlerta('ok',`Aviso enviado: ${tipoLabel}`,msg.slice(0,120)+' — Por '+cUser.name,null);
+  const inp=document.getElementById('notifMsg'); if(inp) inp.value='';
+  renderNotifications();
+}
 
 // ........................................................
 

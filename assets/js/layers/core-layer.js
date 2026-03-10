@@ -21,10 +21,9 @@ const ROLES={
   nurse:    {label:'Enfermería',icon:'👩‍⚕️',chip:'cp'},
 };
 const PERMS={
-  admin:    ['dashboard','schedule','mySchedule','employees','licenses','trades','alerts','generation','hrReport','users'],
-  supervisor:['dashboard','schedule','mySchedule','employees','licenses','trades','alerts','generation','hrReport'],
+  admin:    ['dashboard','schedule','mySchedule','employees','licenses','trades','alerts','generation','notifications','hrReport','users'],
+  supervisor:['dashboard','schedule','mySchedule','employees','licenses','trades','alerts','generation','notifications','hrReport'],
   nurse:    ['mySchedule','trades','alerts'],
-
 };
 const DEMO={
   admin:    {name:'Admin Sistema',email:'admin@guardiapp.com',initials:'AD',sector:'—',clinic:'Todas'},
@@ -268,7 +267,7 @@ function applyPerms(){
 // ........................................................
 // NAVIGATION
 // ........................................................
-const PTITLES={dashboard:'Dashboard General',schedule:'Planificación Mensual',mySchedule:'Mi Agenda Personal',employees:'Gestión de Funcionarios',licenses:'Licencias y Ausencias',trades:'Cambios de Turno',alerts:'Centro de Alertas',generation:'Generación Automática',hrReport:'Reporte RRHH',users:'Usuarios y Permisos'};
+const PTITLES={dashboard:'Dashboard General',schedule:'Planificación Mensual',mySchedule:'Mi Agenda Personal',employees:'Gestión de Funcionarios',licenses:'Licencias y Ausencias',trades:'Cambios de Turno',alerts:'Centro de Alertas',generation:'Generación Automática',notifications:'Notificaciones',hrReport:'Reporte RRHH',users:'Usuarios y Permisos'};
 
 function go(id){
   if(!PERMS[cRole].includes(id)){toast('wa','Acceso restringido','Sin permiso para esta sección.');return;}
@@ -288,6 +287,7 @@ function go(id){
   if(id==='trades')      renderTrades();
   if(id==='alerts')      renderAlerts();
   if(id==='generation')  { renderGenHistory(); populateSendMes(); }
+  if(id==='notifications') renderNotifications();
   if(id==='hrReport')    renderHR();
   if(id==='users')       renderUsers();
   populateSels();
