@@ -49,6 +49,7 @@
     <div class="ni" id="n-alerts" onclick="go('alerts')"><span class="ni-ic">🔔</span>Alertas<span class="ni-b" id="alertBadge"></span></div>
     <div class="nsl">Admin</div>
     <div class="ni" id="n-generation" onclick="go('generation')"><span class="ni-ic">⚙️</span>Generación Auto.</div>
+    <div class="ni" id="n-notifications" onclick="go('notifications')"><span class="ni-ic">📨</span>Notificaciones</div>
     <div class="ni" id="n-hrReport" onclick="go('hrReport')"><span class="ni-ic">📈</span>Reporte RRHH</div>
     <div class="ni" id="n-users" onclick="go('users')"><span class="ni-ic">🛡️</span>Usuarios y Permisos</div>
     <div class="sb-bot">
@@ -76,16 +77,16 @@
 <!-- DASHBOARD -->
 <div class="view act" id="v-dashboard">
   <div class="g4" style="margin-bottom:16px">
-    <div class="sc"><div class="sl" style="background:var(--blue)"></div><div class="slbl">Funcionarios</div><div class="sv" style="color:var(--blue)">47</div><div class="ssub">38 fijos · 9 suplentes</div></div>
-    <div class="sc"><div class="sl" style="background:var(--green)"></div><div class="slbl">Cobertura Hoy</div><div class="sv" style="color:var(--green)">91%</div><div class="ssub">43/47 presentes</div><div class="sdelta up">↑ 3% vs ayer</div></div>
-    <div class="sc"><div class="sl" style="background:var(--amber)"></div><div class="slbl">Licencias Activas</div><div class="sv" style="color:var(--amber)">6</div><div class="ssub">3 LAR · 2 CERT · 1 LE</div></div>
-    <div class="sc"><div class="sl" style="background:var(--red)"></div><div class="slbl">Alertas Críticas</div><div class="sv" style="color:var(--red)">2</div><div class="ssub">7ª guardia detectada</div><div class="sdelta dn">↑ 2 nuevas hoy</div></div>
+    <div class="sc"><div class="sl" style="background:var(--blue)"></div><div class="slbl">Funcionarios</div><div class="sv" style="color:var(--blue)" id="dashFuncNum">47</div><div class="ssub" id="dashFuncSub">38 fijos · 9 suplentes</div></div>
+    <div class="sc"><div class="sl" id="dashCovSl" style="background:var(--green)"></div><div class="slbl">Cobertura Hoy</div><div class="sv" id="dashCovPct" style="color:var(--green)">91%</div><div class="ssub" id="dashCovSub">43/47 presentes</div></div>
+    <div class="sc"><div class="sl" style="background:var(--amber)"></div><div class="slbl">Licencias Activas</div><div class="sv" style="color:var(--amber)" id="dashLicNum">6</div><div class="ssub" id="dashLicSub">3 LAR · 2 CERT · 1 LE</div></div>
+    <div class="sc"><div class="sl" style="background:var(--red)"></div><div class="slbl">Alertas Críticas</div><div class="sv" style="color:var(--red)" id="dashAlertNum">2</div><div class="ssub">alertas activas</div></div>
   </div>
   <div class="g2" style="margin-bottom:16px">
     <div><div class="stit">Cobertura por Sector</div><div class="covg" id="covGrid"></div></div>
     <div><div class="stit">Alertas Activas</div><div style="display:flex;flex-direction:column;gap:8px" id="dashAlerts"></div></div>
   </div>
-  <div class="stit">KPIs — Enero 2026</div>
+  <div class="stit" id="dashKpiTitle">KPIs del mes</div>
   <div class="g3">
     <div class="card"><div class="cb"><div class="slbl">Cumplimiento Guardias</div><div style="font-family:var(--ff-display);font-weight:800;font-size:22px;color:var(--green)">94.2%</div><div class="pw"><div class="pb pbg" style="width:94%"></div></div><div class="ssub" style="margin-top:5px">44/47 guardias · Mes actual</div></div></div>
     <div class="card"><div class="cb"><div class="slbl">Horas Extra</div><div style="font-family:var(--ff-display);font-weight:800;font-size:22px;color:var(--amber)">18 hs</div><div class="pw"><div class="pb pba" style="width:30%"></div></div><div class="ssub" style="margin-top:5px">M. PEREIRA · D. TITO</div></div></div>
@@ -112,8 +113,19 @@
       <button class="btn bp sm" onclick="openM('shiftM')">＋ Turno</button>
     </div>
   </div>
+  <div id="schedBanner" style="display:none;margin-bottom:8px"></div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;font-size:10px;color:var(--t3)">
-    <span><span class="sh sM">M</span> Mañana</span><span><span class="sh sT">T</span> Tarde</span><span><span class="sh sN">N</span> Noche</span><span><span class="sh sV">V</span> Vesp.</span><span><span class="sh sLAR">LAR</span> Lic.anual</span><span><span class="sh sF">F</span> Falta</span><span><span class="sh sLXC">LXC</span> Cambio aprobado</span><span><span class="sh s7">7ª</span> 7ª guardia ⚠</span>
+    <span title="Turno Mañana"><span class="sh sM">M</span> Mañana</span>
+    <span title="Turno Tarde"><span class="sh sT">T</span> Tarde</span>
+    <span title="Turno Noche"><span class="sh sN">N</span> Noche</span>
+    <span title="Turno Vespertino/Especial"><span class="sh sV">V</span> Vesp.</span>
+    <span title="Licencia Anual Reglamentaria"><span class="sh sLAR">LAR</span> Lic. Anual</span>
+    <span title="Licencia Especial / Franco LX"><span class="sh sLE">LE</span> Lic. Especial</span>
+    <span title="No Convocar — no disponible para ese turno"><span class="sh sNC">NC</span> No Conv.</span>
+    <span title="Medio día por cumpleaños — coordinar horario con supervisión. No se puede mover del día del cumpleaños."><span class="sh sCMP">CMP</span> 🎂 Cumpleaños</span>
+    <span title="Falta injustificada"><span class="sh sF">F</span> Falta</span>
+    <span title="Cambio de turno aprobado"><span class="sh sLXC">LXC</span> Cambio aprobado</span>
+    <span title="7ª guardia consecutiva — requiere cobertura"><span class="sh s7">7ª</span> 7ª guardia ⚠</span>
   </div>
   <div class="cw"><table class="ctbl" id="calTbl"></table></div>
   <div id="calMobile" class="gone"></div>
@@ -164,17 +176,30 @@
 <!-- LICENSES -->
 <div class="view" id="v-licenses">
   <div class="tabs">
-    <div class="tab act" onclick="swTab(this,'tLicA')">Activas</div>
+    <div class="tab act" onclick="swTab(this,'tLicA')">Licencias</div>
+    <div class="tab" onclick="swTab(this,'tLicC');renderCobertura()">Cobertura Pendiente</div>
     <div class="tab" onclick="swTab(this,'tLicL')">LAR Anual 2026</div>
     <div class="tab" onclick="swTab(this,'tLicN');resetLicForm()">Nueva Licencia</div>
   </div>
   <div class="tp act" id="tLicA">
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="btn bg xs lic-fil act" onclick="setLicFil(this,'all')">Todas</button>
+      <button class="btn bg xs lic-fil" onclick="setLicFil(this,'vigente')">Vigentes hoy</button>
+      <button class="btn bg xs lic-fil" onclick="setLicFil(this,'pendiente')">Sin cubrir</button>
+      <button class="btn bg xs lic-fil" onclick="setLicFil(this,'finalizada')">Finalizadas</button>
+    </div>
     <div class="tw"><table><thead><tr><th>Funcionario</th><th>Sector</th><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Vacante</th><th>Suplente</th><th>Estado</th></tr></thead><tbody id="licBody"></tbody></table></div>
+  </div>
+  <div class="tp" id="tLicC">
+    <div id="coberturaBody"></div>
   </div>
   <div class="tp" id="tLicL">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <span style="font-size:12px;color:var(--t2)">Planificación LAR anual. Cargar al inicio del año para cada funcionario.</span>
-      <button class="btn bp sm" onclick="openM('larM')">＋ Cargar LAR</button>
+      <div style="display:flex;gap:6px">
+        <input type="file" id="licImportFile" accept=".xlsx,.xls" style="display:none" onchange="handleLicImport(event)">
+        <button class="btn bp sm" onclick="document.getElementById('licImportFile').click()">⬆ Importar Excel RRHH</button>
+      </div>
     </div>
     <div class="tw"><table><thead><tr><th>Funcionario</th><th>Sector</th><th>Total</th><th>ENE</th><th>FEB</th><th>MAR</th><th>ABR</th><th>MAY</th><th>JUN</th><th>JUL</th><th>AGO</th><th>SEP</th><th>OCT</th><th>NOV</th><th>DIC</th><th>Saldo</th></tr></thead><tbody id="larBody"></tbody></table></div>
   </div>
@@ -272,7 +297,7 @@
     <div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Fecha</th><th>Mes generado</th><th>Sector</th><th>Func.</th><th>Alertas</th><th>Estado</th><th>Acciones</th></tr></thead>
     <tbody id="genHistBody"></tbody></table></div>
     <!-- VALIDATION MODAL -->
-    <div class="ov" id="genValidM"><div class="modal" style="width:780px;max-width:96vw">
+    <div class="ov" id="genValidM"><div class="modal" style="width:min(1200px,96vw)">
       <div class="mh">
         <div class="mh-t">✓ Validar Planilla — Enero 2026</div>
         <div style="display:flex;gap:6px">
@@ -282,17 +307,15 @@
       </div>
       <div class="mb" style="padding:14px 18px">
         <div style="background:var(--adim);border:1px solid rgba(245,166,35,.3);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:11px;color:var(--amber)">
-          ⚠ Revisá la planilla antes de aprobar. Podés editar celdas individuales. Una vez aprobada se envían las agendas.
+          ⚠ Revisá la planilla antes de aprobar. Podés editar celdas individuales haciendo click. Una vez aprobada se envían las agendas a los funcionarios.
         </div>
-        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
-          <span style="font-size:11px;color:var(--t2)">Alertas detectadas:</span>
-          <span class="chip cr">7ª Guardia - 2</span>
-          <span class="chip ca">Vacantes - 1</span>
-          <span style="margin-left:auto">
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--t2)" id="genValAlertChips"></span>
+          <span style="margin-left:auto;display:flex;gap:6px">
             <button class="btn bg xs" onclick="downloadGenXLSX()">⬇ Exportar Excel</button>
           </span>
         </div>
-        <div class="cw" id="genValGrid" style="max-height:420px;overflow:auto"></div>
+        <div style="overflow:auto;max-height:55vh" id="genValGrid"></div>
       </div>
       <div class="mf">
         <button class="btn bg" onclick="closeM('genValidM')">Cerrar sin aprobar</button>
@@ -377,6 +400,9 @@
   <div class="tw"><table><thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Sector / Clínica</th><th>Último acceso</th><th>Estado</th><th></th></tr></thead><tbody id="usersBody"></tbody></table></div>
 </div>
 
+<!-- NOTIFICATIONS -->
+<div class="view" id="v-notifications"></div>
+
     </div><!-- /content -->
   </div><!-- /main -->
 </div><!-- /app -->
@@ -444,9 +470,13 @@
 <div class="ov" id="empM"><div class="modal">
   <div class="mh"><div class="mh-t">👩‍⚕️ Nuevo Funcionario</div><button class="mh-x" onclick="closeM('empM')">✕</button></div>
   <div class="mb">
-    <div class="fr"><div class="fg"><label>Apellido, Nombre</label><input id="eApNom" type="text" placeholder="GARCIA, Rosa"></div><div class="fg"><label>Tipo</label><select id="eTipo" onchange="onEmpTipoChange()"><option>Fijo</option><option>Suplente</option></select></div></div>
-    <div class="fr"><div class="fg"><label>Clínica</label><select id="eCli"><option>Setiembre</option><option>Carrasco</option><option>Golf</option><option>Maldonado</option></select></div><div class="fg"><label>Sector</label><select id="eSec"><option>POLI MAÑANA</option><option>POLI TARDE</option><option>OBSERVACIÓN</option><option>AMNP</option><option>CPB</option><option>ECONOMATO</option><option>GINE SET</option></select></div></div>
-    <div class="fr"><div class="fg"><label>Turno Fijo</label><select id="eTurno"><option>Mañana</option><option>Tarde</option><option>Noche</option><option>Rotativo</option></select></div><div class="fg"><label>Hs./semana</label><input id="eHs" type="number" value="36"></div></div>
+    <div class="fr"><div class="fg"><label>N° Funcionario</label><input id="eNumero" type="number" placeholder="ej: 565" min="1"></div><div class="fg"><label>Tipo</label><select id="eTipo" onchange="onEmpTipoChange()"><option>Fijo</option><option>Suplente</option></select></div></div>
+    <div class="fr"><div class="fg" style="flex:2"><label>Apellido, Nombre</label><input id="eApNom" type="text" placeholder="GARCIA, Rosa"></div></div>
+    <div class="fr"><div class="fg"><label>Clínica</label><select id="eCli"><option>Setiembre</option><option>Carrasco</option><option>Golf</option><option>Maldonado</option></select></div><div class="fg"><label>Sector</label><select id="eSec"><option>POLI MAÑANA</option><option>POLI TARDE</option><option>OBSERVACIÓN</option><option>AMNP</option><option>CPB</option><option>ECONOMATO</option><option>GINE SET</option><option>TISANERÍA</option><option>BQ</option></select></div></div>
+    <div class="fr"><div class="fg"><label>Turno Fijo</label><select id="eTurno"><option value="M">Mañana</option><option value="T">Tarde</option><option value="V">Vespertino</option><option value="N">Noche</option><option value="ROT">Rotativo</option></select></div><div class="fg"><label>Hs./semana</label><input id="eHs" type="number" value="36"></div></div>
+    <div class="fr"><div class="fg"><label>Patrón de rotación</label><select id="ePatron" onchange="toggleCicloRef()"><option value="LV">Lunes–Viernes</option><option value="LS">Lunes–Sábado</option><option value="4x1">4×1 (4 trabajo + 1 descanso)</option><option value="6x1">6×1 (6 trabajo + 1 descanso)</option><option value="36H">36hs semanales (flexible)</option><option value="SD">Sábado–Domingo</option></select></div><div class="fg" id="eCicloRefBox" style="display:none"><label>Fecha inicio ciclo</label><input id="eCicloRef" type="date"></div><div class="fg" id="eTurnoSabBox" style="display:none"><label>Turno Sábado</label><select id="eTurnoSab"><option value="">— igual al turno fijo —</option><option value="M">Mañana</option><option value="T">Tarde</option><option value="V">Vespertino</option><option value="N">Noche</option></select></div></div>
+    <div class="fr"><div class="fg" id="eTurnoDomBox" style="display:none"><label>Turno Domingo</label><select id="eTurnoDom"><option value="">— igual al turno fijo —</option><option value="M">Mañana</option><option value="T">Tarde</option><option value="V">Vespertino</option><option value="N">Noche</option></select></div><div class="fg" id="eTurnoCicloBox" style="display:none"><label>Turno por posición de ciclo <small>(ej: T,M,M,T)</small></label><input id="eTurnoCiclo" type="text" placeholder="T,M,M,T — separado por comas"></div></div>
+    <div class="fr"><div class="fg wide"><details id="eTurnoSemDet"><summary style="cursor:pointer;font-size:12px;color:var(--t2);user-select:none">Override por día de semana <small>(opcional)</small></summary><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px 8px;align-items:center;margin-top:6px"><label style="font-size:11px;text-align:center">Lun</label><label style="font-size:11px;text-align:center">Mar</label><label style="font-size:11px;text-align:center">Mié</label><label style="font-size:11px;text-align:center">Jue</label><label style="font-size:11px;text-align:center">Vie</label><label style="font-size:11px;text-align:center">Sáb</label><label style="font-size:11px;text-align:center">Dom</label><select id="eTsem1"><option value="">—</option><option value="M">M</option><option value="T">T</option><option value="V">V</option><option value="N">N</option></select><select id="eTsem2"><option value="">—</option><option value="M">M</option><option value="T">T</option><option value="V">V</option><option value="N">N</option></select><select id="eTsem3"><option value="">—</option><option value="M">M</option><option value="T">T</option><option value="V">V</option><option value="N">N</option></select><select id="eTsem4"><option value="">—</option><option value="M">M</option><option value="T">T</option><option value="V">V</option><option value="N">N</option></select><select id="eTsem5"><option value="">—</option><option value="M">M</option><option value="T">T</option><option value="V">V</option><option value="N">N</option></select><select id="eTsem6"><option value="">—</option><option value="M">M</option><option value="T">T</option><option value="V">V</option><option value="N">N</option></select><select id="eTsem7"><option value="">—</option><option value="M">M</option><option value="T">T</option><option value="V">V</option><option value="N">N</option></select></div></details></div></div>
     <div id="eTitBox" style="display:none;background:var(--adim);border:1px solid rgba(245,166,35,.3);border-radius:var(--r);padding:11px;margin-bottom:4px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
         <input type="checkbox" id="eTitular" onchange="toggleTitularidad(this.checked)" style="width:15px;height:15px;cursor:pointer">
@@ -462,9 +492,9 @@
         </select>
       </div>
     </div>
-    <div class="fr"><div class="fg"><label>Fecha de Nacimiento</label><input id="eFnac" type="date" placeholder="DD/MM/AAAA"></div><div class="fg"><label>Teléfono / WhatsApp</label><input id="eTel" type="tel" placeholder="+598 9X XXX XXX"></div></div>
-    <div class="fr"><div class="fg"><label>Fecha de Ingreso</label><input id="eFingreso" type="date" placeholder="DD/MM/AAAA"></div><div class="fg"><label>Alerta supervisora (días)</label><input id="eAlertDias" type="number" value="45" min="1" max="365" placeholder="45 = 1.5 meses"></div></div>
-    <div class="fg"><label>Email</label><input id="eEmail" type="email" placeholder="nombre@clinica.com"></div>
+    <div class="fr"><div class="fg"><label>Fecha de Nacimiento</label><input id="eFnac" type="date"></div><div class="fg"><label>Fecha de Ingreso</label><input id="eFIng" type="date"></div></div>
+    <div class="fr"><div class="fg"><label>Alerta supervisora (días desde ingreso)</label><input id="eAlertDias" type="number" value="45" min="1" max="365" placeholder="45 = 1.5 meses"></div></div>
+    <div class="fr"><div class="fg"><label>Teléfono / WhatsApp</label><input id="eTel" type="tel" placeholder="+598 9X XXX XXX"></div><div class="fg"><label>Email</label><input id="eEmail" type="email" placeholder="nombre@clinica.com"></div></div>
   </div>
   <div class="mf"><button class="btn bg" onclick="closeM('empM')">Cancelar</button><button class="btn bp" onclick="saveEmp()">💾 Guardar</button></div>
 </div></div>

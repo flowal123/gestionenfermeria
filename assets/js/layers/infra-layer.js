@@ -14,31 +14,34 @@ async function loadDB(){
   if(!sb){ console.warn('Supabase no iniciado'); return; }
   showDBLoading(true);
   try {
-    const [fRes, tRes, lRes, cRes, aRes, uRes] = await Promise.all([
+    const [fRes, tRes, lRes, cRes, aRes, uRes, phRes] = await Promise.all([
       sb.from('funcionarios').select('*, clinica:clinicas(nombre,codigo), sector:sectores(nombre,codigo)').order('apellido'),
       sb.from('turnos').select('funcionario_id, fecha, codigo, sector_id').gte('fecha','2026-01-01').lte('fecha','2026-12-31').limit(20000),
       sb.from('licencias').select('id, funcionario_id, suplente_id, tipo, fecha_desde, fecha_hasta, dias, genera_vacante, estado, observaciones, funcionario:funcionario_id(id,apellido,nombre,telefono,fecha_nacimiento,sector:sector_id(nombre)), suplente:suplente_id(apellido,nombre)').in('estado',["activa","pendiente"]),
       sb.from('cambios').select('id, solicitante_id, receptor_id, turno_cede, fecha_cede, turno_recibe, fecha_recibe, estado, created_at, solicitante:solicitante_id(apellido,nombre), receptor:receptor_id(apellido,nombre)').order('created_at',{ascending:false}),
       sb.from('alertas').select('*').eq('leida',false).order('created_at',{ascending:false}).limit(20),
       sb.from('usuarios').select('id, email, rol, activo, funcionario_id, funcionario:funcionario_id(id,apellido,nombre,email,sector:sector_id(nombre),clinica:clinica_id(nombre))').eq('activo',true),
+      sb.from('patron_historico').select('funcionario_id,patron,ciclo_ref,turno_fijo,turno_ciclo,turno_semana,vigente_desde,vigente_hasta').order('vigente_desde'),
     ]);
     if(fRes.error) throw fRes.error;
     if(tRes.error) console.error('O turnos:', tRes.error.message);
     if(lRes.error) console.error('O licencias:', lRes.error.message);
     if(cRes.error) console.error('O cambios:', cRes.error.message);
     if(uRes.error) console.error('O usuarios:', uRes.error.message);
-    DB.funcionariosAll = (fRes.data||[]).filter(f=>f.tipo==='fijo');
-    DB.suplentesAll    = (fRes.data||[]).filter(f=>f.tipo==='suplente');
-    DB.funcionarios = DB.funcionariosAll.filter(f=>f.activo!==false);
-    DB.suplentes    = DB.suplentesAll.filter(f=>f.activo!==false);
-    DB.turnos       = tRes.data||[];
-    DB.licencias    = lRes.data||[];
-    DB.cambios      = cRes.data||[];
-    DB.alertas      = aRes.data||[];
+    if(phRes.error) console.warn('patron_historico no disponible:', phRes.error.message);
+    DB.funcionariosAll  = (fRes.data||[]).filter(f=>f.tipo==='fijo');
+    DB.suplentesAll     = (fRes.data||[]).filter(f=>f.tipo==='suplente');
+    DB.funcionarios     = DB.funcionariosAll.filter(f=>f.activo!==false);
+    DB.suplentes        = DB.suplentesAll.filter(f=>f.activo!==false);
+    DB.turnos           = tRes.data||[];
+    DB.licencias        = lRes.data||[];
+    DB.cambios          = cRes.data||[];
+    DB.alertas          = aRes.data||[];
     // Rebuild dismissed alerts from DB (leida=true means already handled)
     // Note: static role-alerts (7ª guardia etc.) use DISMISSED_ALERTS in-memory only
     // but DB alerts come from DB.alertas filtered by leida=false
-    DB.usuarios     = uRes.data||[];
+    DB.usuarios         = uRes.data||[];
+    DB.patronHistorico  = phRes.data||[];
     dbLoaded = true;
     console.log(`o. DB: ${DB.funcionarios.length} fijos activos, ${DB.suplentes.length} suplentes activos, ${DB.turnos.length} turnos, ${LIC_DATA.length} licencias`);
     // Actualizar badges con datos reales
@@ -87,8 +90,8 @@ async function saveFuncionario(data){
 async function updateFuncionario(id, data){
   if(!sb) return null;
   // Only send valid funcionarios columns (exclude joined/computed fields)
-  const {apellido,nombre,tipo,email,telefono,fecha_nacimiento,fecha_ingreso,alerta_ingreso_dias,titularidad_temp,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id} = data;
-  const cleanData = Object.fromEntries(Object.entries({apellido,nombre,tipo,email,telefono,fecha_nacimiento,fecha_ingreso,alerta_ingreso_dias,titularidad_temp,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id}).filter(([,v])=>v!==undefined));
+  const {numero,apellido,nombre,tipo,email,telefono,fecha_nacimiento,fecha_ingreso,alerta_ingreso_dias,titularidad_temp,horas_semana,horas_dia,turno_fijo,turno_sabado,turno_domingo,turno_ciclo,turno_semana,activo,clinica_id,sector_id,patron,ciclo_ref} = data;
+  const cleanData = Object.fromEntries(Object.entries({numero,apellido,nombre,tipo,email,telefono,fecha_nacimiento,fecha_ingreso,alerta_ingreso_dias,titularidad_temp,horas_semana,horas_dia,turno_fijo,turno_sabado,turno_domingo,turno_ciclo,turno_semana,activo,clinica_id,sector_id,patron,ciclo_ref}).filter(([,v])=>v!==undefined));
   const {data:res, error} = await sb.from('funcionarios').update(cleanData).eq('id',id).select().single();
   if(error){ toast('er','Error','No se pudo actualizar'); return null; }
   const idx = DB.funcionarios.findIndex(f=>f.id===id);
@@ -105,6 +108,17 @@ async function saveTurno(funcionarioId, fecha, codigo, sectorId, nota){
   const idx = DB.turnos.findIndex(t=>t.funcionario_id===funcionarioId && t.fecha===fecha);
   if(idx>=0) DB.turnos[idx]=res; else DB.turnos.push(res);
   return res;
+}
+
+async function saveTurnosBatch(records){
+  if(!sb || !records.length) return true;
+  const {error} = await sb.from('turnos').upsert(records, {onConflict:'funcionario_id,fecha'});
+  if(error){ toast('er','Error al guardar turnos', error.message); return false; }
+  records.forEach(r=>{
+    const idx=DB.turnos.findIndex(t=>t.funcionario_id===r.funcionario_id && t.fecha===r.fecha);
+    if(idx>=0) DB.turnos[idx]=r; else DB.turnos.push(r);
+  });
+  return true;
 }
 
 async function deleteTurno(funcionarioId, fecha){
@@ -243,6 +257,22 @@ function getTurnoFecha(funcId, fecha){
   return t ? t.codigo : null;
 }
 
+// "—? Helper: patrón histórico vigente para un mes ——————————?
+/**
+ * Devuelve el registro de patron_historico más reciente vigente
+ * para un funcionario en una fecha determinada.
+ * @param {number} funcId  - ID del funcionario
+ * @param {string} mesStr  - 'YYYY-MM-DD' (primer día del mes a evaluar)
+ * @returns {Object|null}  - Registro o null si no hay historial
+ */
+function getPatronVigente(funcId, mesStr){
+  return (DB.patronHistorico||[])
+    .filter(r => r.funcionario_id===funcId
+               && r.vigente_desde<=mesStr
+               && (!r.vigente_hasta||r.vigente_hasta>=mesStr))
+    .sort((a,b)=>b.vigente_desde.localeCompare(a.vigente_desde))[0] || null;
+}
+
 if(window.GApp?.registerLayer){
   window.GApp.registerLayer('infra', {
     initSB,
@@ -252,6 +282,7 @@ if(window.GApp?.registerLayer){
     updateFuncionario,
     deleteFuncionario,
     saveTurno,
+    saveTurnosBatch,
     deleteTurno,
     saveLicencia,
     saveCambio,
@@ -259,6 +290,7 @@ if(window.GApp?.registerLayer){
     createAlerta,
     marcarAlertasLeidas,
     checkIngresoAlerts,
+    getPatronVigente,
   });
 }
 

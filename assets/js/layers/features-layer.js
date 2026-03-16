@@ -15,34 +15,36 @@ function renderDashAlerts(){
   const skip=new Set(['LAR','CERT','LE','F','DXF','CPL','E','LX1','LX2','LX3','LX4','LXE','NO CONVOCAR','MAT','PAT']);
 
   if(dbLoaded){
-    // 7ª guardia (demo-regla mensual simple)
+    // 7ª guardia: verificar días CONSECUTIVOS (no total mensual)
     DB.funcionarios.forEach(f=>{
-      const g=DB.turnos.filter(t=>t.funcionario_id===f.id&&t.codigo&&!skip.has(t.codigo)).length;
-      if(g>=7){
+      const wk=DB.turnos.filter(t=>t.funcionario_id===f.id&&t.codigo&&!skip.has(t.codigo)).map(t=>t.fecha).sort();
+      let maxC=wk.length?1:0,cur=1;
+      for(let i=1;i<wk.length;i++){
+        const diff=Math.round((new Date(wk[i]+'T12:00:00')-new Date(wk[i-1]+'T12:00:00'))/86400000);
+        cur=diff===1?cur+1:1;if(cur>maxC)maxC=cur;
+      }
+      if(maxC>=7){
         items.push({
-          cls:'cr2',
-          ic:'🚨',
-          t:`7ª Guardia — ${fNombre(f)} (${f.sector?.nombre||''})`,
-          d:`${g} guardias este mes · genera horas extra obligatorias`,
+          cls:'cr2',ic:'🚨',
+          t:`7ª Guardia consecutiva — ${fNombre(f)} (${f.sector?.nombre||''})`,
+          d:`${maxC} días seguidos sin descanso · genera horas extra obligatorias`,
           m:f.clinica?.nombre||'',
           btn:`<button class="btn bp xs" style="flex-shrink:0" onclick="go('alerts')">Ver</button>`,
         });
       }
     });
 
-    // Vacantes sin cubrir
-    DB.licencias.filter(l=>l.genera_vacante&&!l.suplente_id&&['activa','pendiente'].includes(l.estado)).forEach(l=>{
-      const emp=l.funcionario?fNombre(l.funcionario):'—';
-      const sec=l.funcionario?.sector?.nombre||'—';
+    // Vacantes sin cubrir — agrupadas en una sola alerta
+    const vacSinCubrir=DB.licencias.filter(l=>l.genera_vacante&&!l.suplente_id&&['activa','pendiente'].includes(l.estado));
+    if(vacSinCubrir.length){
       items.push({
-        cls:'wa',
-        ic:'⚠️',
-        t:`Vacante sin cubrir — ${sec}`,
-        d:`${emp} · ${l.tipo} · ${l.fecha_desde}`,
+        cls:'wa',ic:'⚠️',
+        t:`${vacSinCubrir.length} vacante${vacSinCubrir.length>1?'s':''} sin cubrir`,
+        d:vacSinCubrir.slice(0,2).map(l=>`${l.funcionario?fNombre(l.funcionario):'—'} · ${l.tipo}`).join(' · '),
         m:'Sin suplente asignado',
         btn:`<button class="btn bp xs" style="flex-shrink:0" onclick="go('licenses')">Asignar</button>`,
       });
-    });
+    }
 
     // Cambios pendientes
     const pCambios=DB.cambios.filter(x=>x.estado==='pendiente');
@@ -62,20 +64,49 @@ function renderDashAlerts(){
     c.innerHTML=`
       <div class="ai in"><span style="font-size:17px;flex-shrink:0">ℹ️</span><div><div class="ai-t">Sin alertas críticas activas</div><div class="ai-d">No hay pendientes urgentes para supervisión.</div><div class="ai-m">${dbLoaded?'Actualizado desde BD':'Modo demo'}</div></div></div>
     `;
-    return;
+  }else{
+    c.innerHTML=items.slice(0,3).map(a=>`
+      <div class="ai ${a.cls}">
+        <span style="font-size:17px;flex-shrink:0">${a.ic}</span>
+        <div>
+          <div class="ai-t">${a.t}</div>
+          <div class="ai-d">${a.d}</div>
+          <div class="ai-m">${a.m}</div>
+        </div>
+        ${a.btn||''}
+      </div>
+    `).join('');
   }
 
-  c.innerHTML=items.slice(0,3).map(a=>`
-    <div class="ai ${a.cls}">
-      <span style="font-size:17px;flex-shrink:0">${a.ic}</span>
-      <div>
-        <div class="ai-t">${a.t}</div>
-        <div class="ai-d">${a.d}</div>
-        <div class="ai-m">${a.m}</div>
-      </div>
-      ${a.btn||''}
-    </div>
-  `).join('');
+  // Update dashboard stat cards dynamically
+  if(dbLoaded){
+    const fijos = DB.funcionarios.filter(f=>f.activo!==false&&f.tipo!=='suplente').length;
+    const sups  = DB.suplentes.filter(s=>s.activo!==false).length;
+    const total = fijos + sups;
+    const el=id=>document.getElementById(id);
+    el('dashFuncNum')&&(el('dashFuncNum').textContent=String(total));
+    el('dashFuncSub')&&(el('dashFuncSub').textContent=`${fijos} fijos · ${sups} suplentes`);
+
+    const today=new Date().toISOString().slice(0,10);
+    const onLic=new Set(DB.licencias.filter(l=>l.estado==='activa'&&l.fecha_desde<=today&&l.fecha_hasta>=today).map(l=>l.funcionario_id));
+    const present=total-onLic.size;
+    const pct=total?Math.round(present/total*100):100;
+    const col=pct>=90?'var(--green)':pct>=75?'var(--amber)':'var(--red)';
+    const pctEl=el('dashCovPct'); if(pctEl){pctEl.textContent=`${pct}%`;pctEl.style.color=col;}
+    const slEl=el('dashCovSl'); if(slEl) slEl.style.background=col;
+    el('dashCovSub')&&(el('dashCovSub').textContent=`${present}/${total} presentes`);
+
+    const licHoy=DB.licencias.filter(l=>l.estado==='activa'&&l.fecha_desde<=today&&l.fecha_hasta>=today);
+    el('dashLicNum')&&(el('dashLicNum').textContent=String(licHoy.length));
+    const byTipo={};
+    licHoy.forEach(l=>{byTipo[l.tipo]=(byTipo[l.tipo]||0)+1;});
+    el('dashLicSub')&&(el('dashLicSub').textContent=Object.entries(byTipo).map(([k,v])=>`${v} ${k}`).join(' · ')||'Sin licencias activas hoy');
+
+    el('dashAlertNum')&&(el('dashAlertNum').textContent=String(items.length));
+    // Título KPIs dinámico con mes/año actual
+    const kpiTit=el('dashKpiTitle');
+    if(kpiTit){ const n=new Date(); kpiTit.textContent=`KPIs — ${getMonthLabel(n.getFullYear(),n.getMonth())}`; }
+  }
 }
 
 // ........................................................
@@ -205,6 +236,15 @@ function getApprovedTradeOverride(empName,dateStr){
 function renderCal(){
   ensureScheduleMonthSel();
   const {year,month}=SCHED_CTX;
+  // Show borrador banner
+  const gen=GENS.find(g=>g.anio===year&&g.mesNum===month+1);
+  const banner=document.getElementById('schedBanner');
+  if(banner){
+    if(gen?.estado==='borrador'){
+      banner.style.display='block';
+      banner.innerHTML=`<div style="background:var(--adim);border:1px solid rgba(245,166,35,.3);border-radius:var(--r);padding:10px 14px;font-size:11px;color:var(--amber);display:flex;align-items:center;gap:10px">⚠ Planilla de <strong>${gen.mes}</strong> en borrador — pendiente de validación. <button class="btn ba xs" style="margin-left:auto" onclick="go('generation')">Ir a Validar</button></div>`;
+    }else{ banner.style.display='none'; banner.innerHTML=''; }
+  }
   const meta=getMonthMeta(year,month);
   cWeek=Math.max(0,Math.min(meta.weeks-1,cWeek));
   const startIdx=cWeek*7;
@@ -250,18 +290,19 @@ function renderCal(){
       grp.emps.forEach(emp=>{
         const empRec=EMPS.find(e=>e.name===emp);
         const empId=empRec?.id||null;
-        let monthWork=0;
+        // Detectar días con 7+ guardias consecutivas (NO total del mes)
+        let consec=0; const badDaysMob=new Set();
         for(let d=1;d<=meta.daysInMonth;d++){
           const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
           const wd=(new Date(Date.UTC(year,month,d)).getUTCDay()+6)%7;
           const {code}=resolveCodeForDay(emp,empId,d,dateStr,wd);
-          if(isW(code)) monthWork++;
+          if(isW(code)){ consec++; if(consec>=7) badDaysMob.add(d); } else consec=0;
         }
-        const is7=monthWork>=7;
+        const is7=badDaysMob.size>0;
         const ed=EMPS.find(e=>e.name===emp);
         const dc=ed?.status==='absent'?'dr2':ed?.status==='lar'?'da':'dg';
         mh+=`<div class="mcard">
-          <div class="mhead"><span><span class="dot ${dc}"></span>${emp}</span>${is7?'<span class="chip cr">7ª</span>':''}</div>
+          <div class="mhead"><span><span class="dot ${dc}"></span>${emp}</span>${is7?'<span class="chip cr" title="7ª guardia consecutiva — requiere cobertura">7ª</span>':''}</div>
           <div class="mdays">`;
         cells.forEach(c=>{
           if(!c.valid){ mh+='<button class="mday off" disabled>—</button>'; return; }
@@ -269,7 +310,7 @@ function renderCal(){
           const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
           const wd=c.col;
           const {code,ov,licOv}=resolveCodeForDay(emp,empId,d,dateStr,wd);
-          const cls=is7&&code&&isW(code)?'s7':shCls(code);
+          const cls=badDaysMob.has(d)&&code&&isW(code)?'s7':shCls(code);
           const tip=licOv?.title||ov?.title||'';
           mh+=`<button class="mday ${c.wk?'wk':''}" onclick="editC('${emp}',${d},'${code||''}')">
             <span class="mab">${DAB[c.col]}</span>
@@ -295,28 +336,17 @@ function renderCal(){
     grp.emps.forEach(emp=>{
       const empRec=EMPS.find(e=>e.name===emp);
       const empId=empRec?.id||null;
-      let monthWork=0;
+      let consec=0; const badDays=new Set();
       for(let d=1;d<=meta.daysInMonth;d++){
         const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        let code=getShiftChange(emp,dateStr);
-        if(!code){
-          if(empId && dbLoaded) code=getTurnoFecha(empId,dateStr);
-          if(!code){
-            const sc=WK[emp]||[];
-            const wd=(new Date(Date.UTC(year,month,d)).getUTCDay()+6)%7;
-            code=sc[wd]||'';
-          }
-        }
-        const ov=getApprovedTradeOverride(emp,dateStr);
-        if(ov?.code) code=ov.code;
-        const licOv=getLicenciaCodeForDate(empId,dateStr);
-        if(licOv?.code) code=licOv.code;
-        if(isW(code)) monthWork++;
+        const wd=(new Date(Date.UTC(year,month,d)).getUTCDay()+6)%7;
+        const {code}=resolveCodeForDay(emp,empId,d,dateStr,wd);
+        if(isW(code)){ consec++; if(consec>=7) badDays.add(d); } else consec=0;
       }
-      const is7=monthWork>=7;
+      const is7=badDays.size>0;
       const ed=EMPS.find(e=>e.name===emp);
       const dc=ed?.status==='absent'?'dr2':ed?.status==='lar'?'da':'dg';
-      html+=`<tr class="cnr"><td class="cnm"><span class="dot ${dc}"></span>${emp}${is7?' <span class="chip cr" style="font-size:9px">7ª!</span>':''}</td>`;
+      html+=`<tr class="cnr"><td class="cnm"><span class="dot ${dc}"></span>${emp}${is7?' <span class="chip cr" style="font-size:9px" title="7ª guardia consecutiva — requiere cobertura">7ª!</span>':''}</td>`;
       cells.forEach(c=>{
         if(!c.valid){ html+='<td class="ccc" style="opacity:.5"></td>'; return; }
         const d=c.day;
@@ -324,7 +354,7 @@ function renderCal(){
         const wd=c.col;
         const {code,ov,licOv}=resolveCodeForDay(emp,empId,d,dateStr,wd);
         const wk=c.wk;
-        const cls=is7&&code&&isW(code)?'s7':shCls(code);
+        const cls=badDays.has(d)&&code&&isW(code)?'s7':shCls(code);
         const isTradeApproved = !!ov && !licOv;
         const tip = licOv?.title || ov?.title || '';
         html+=`<td class="ccc${wk?' ccw':''}${isTradeApproved?' cctrd':''}" onclick="editC('${emp}',${d},'${code||''}')">`;
@@ -1047,39 +1077,345 @@ function filterT(id,val){document.querySelectorAll(`#${id} tr`).forEach(r=>{r.st
 // ........................................................
 // LICENSES
 // ........................................................
+let LIC_FIL = 'all';
+let COB_FIL = { mes: '', cliId: 'all', secId: 'all' };
+
+function setLicFil(btn, val){
+  LIC_FIL = val;
+  document.querySelectorAll('.lic-fil').forEach(b=>b.classList.remove('act'));
+  btn?.classList.add('act');
+  renderLics();
+}
+
+function getSuplenteSugeridos(lic){
+  if(!dbLoaded || !DB.suplentes.length) return [];
+  const from=new Date((lic.fecha_desde||lic.from)+'T12:00:00');
+  const to=new Date((lic.fecha_hasta||lic.to)+'T12:00:00');
+  const empClinica=lic.funcionario?.clinica?.nombre||lic.clinica||'';
+  const empSector=lic.funcionario?.sector?.nombre||lic.sec||lic.sector||'';
+  const cubierto=DB.funcionarios.find(f=>f.id===(lic.funcionario_id||(lic.funcionario?.id)));
+  const turnoReq=cubierto?.turno_fijo||'M';
+  const mesPrefix=(lic.fecha_desde||lic.from||'').slice(0,7);
+  return DB.suplentes
+    .filter(s=>s.activo!==false)
+    .filter(s=>{
+      // Sin turnos de trabajo conflictivos en el rango de fechas
+      return !DB.turnos.some(t=>{
+        if(t.funcionario_id!==s.id) return false;
+        const td=new Date(t.fecha+'T12:00:00');
+        return td>=from && td<=to && isW(t.codigo);
+      });
+    })
+    .map(s=>{
+      const sc=s.clinica?.nombre||'';
+      const ss=s.sector?.nombre||'';
+      const sameSector=ss===empSector||sc===empClinica?2:0;
+      const turnoMatch=(s.turno_fijo===turnoReq)?3:0;  // +3 mismo turno que el cubierto
+      const guardias=DB.turnos.filter(t=>t.funcionario_id===s.id&&isW(t.codigo)).length;
+      const guardiasMes=DB.turnos.filter(t=>t.funcionario_id===s.id&&t.fecha.startsWith(mesPrefix)&&isW(t.codigo)).length;
+      const overwork=Math.max(0,(guardiasMes-20)*0.5);  // penalizar si ya tiene >20 guardias en el mes
+      return {...s, _score:sameSector + turnoMatch - guardias*0.01 - overwork};
+    })
+    .sort((a,b)=>b._score-a._score)
+    .slice(0,5);
+}
+
+/**
+ * Genera turnos de cobertura para el suplente asignado a una licencia.
+ * Solo genera si la licencia tiene suplente_id y genera_vacante=true.
+ * @param {Object} lic - Objeto licencia de DB.licencias
+ * @returns {number} - Cantidad de turnos generados
+ */
+async function generateSuplenteTurnos(lic){
+  if(!lic.suplente_id || !lic.genera_vacante) return 0;
+  const suplente=(DB.suplentes||[]).find(s=>s.id===lic.suplente_id);
+  const cubierto=DB.funcionarios.find(f=>f.id===lic.funcionario_id);
+  if(!suplente || !cubierto) return 0;
+  const turnoACubrir=cubierto.turno_fijo||'M';
+  const sectorId=lic.sector_id||cubierto.sector_id||null;
+  const records=[];
+  let d=new Date((lic.fecha_desde||lic.from)+'T12:00:00');
+  const end=new Date((lic.fecha_hasta||lic.to)+'T12:00:00');
+  while(d<=end){
+    const dateStr=d.toISOString().slice(0,10);
+    const conflicto=(DB.turnos||[]).find(t=>t.funcionario_id===suplente.id&&t.fecha===dateStr);
+    if(!conflicto){
+      records.push({funcionario_id:suplente.id,fecha:dateStr,codigo:turnoACubrir,sector_id:sectorId});
+    }
+    d.setUTCDate(d.getUTCDate()+1);
+  }
+  if(records.length) await saveTurnosBatch(records);
+  return records.length;
+}
+
+async function asignarSuplenteLic(licId, supId, supNombre){
+  if(!sb) return;
+  const {error}=await sb.from('licencias').update({suplente_id:supId,estado:'pendiente'}).eq('id',licId);
+  if(error){ toast('er','Error','No se pudo asignar el suplente'); return; }
+  const l=DB.licencias.find(x=>x.id===licId);
+  if(l){ l.suplente_id=supId; l.estado='pendiente'; l.suplente={apellido:supNombre.split(', ')[0],nombre:supNombre.split(', ')[1]||''}; }
+  renderLics();
+  renderCobertura();
+  toast('ok','Suplente asignado',`${supNombre} — pendiente aprobación supervisora`);
+}
+
 function renderLics(){
   const body=document.getElementById('licBody');if(!body)return;
-  // Use DB data if available, else use LIC_DATA state
-  const lics = dbLoaded && DB.licencias.length
-    ? DB.licencias.map((l,i)=>({
-        id:l.id, emp:l.funcionario?`${l.funcionario.apellido}, ${l.funcionario.nombre}`:'—',
-        sec:l.funcionario?.sector?.nombre||'—', type:l.tipo, 
-        from:l.fecha_desde, to:l.fecha_hasta, days:l.dias||Math.max(1,Math.round((new Date((l.fecha_hasta||l.fecha_desde)+'T12:00:00')-new Date((l.fecha_desde||l.fecha_hasta)+'T12:00:00'))/86400000)+1),
-        vac:l.genera_vacante,
-        sub:l.suplente?fNombre(l.suplente):(l.suplente_id?'Asignado':'Sin asignar'),
-        st:l.estado==='pendiente'?'pendiente':(l.genera_vacante&&!l.suplente_id?'uncovered':l.estado==='activa'?'active':'covered')
-      }))
-    : LIC_DATA;
-  body.innerHTML=lics.map((l,idx)=>{
-    const tc={LAR:'cg',CERT:'cb2',F:'cr',LE:'ca',MAT:'cp',PAT:'cb2',DXF:'cn',CPL:'cp'}[l.type]||'cn';
-    const sc=l.st==='covered'?'cg':l.st==='active'?'cg':l.st==='uncovered'?'cr':l.st==='pendiente'?'ca':'cn';
-    const sl={active:'Activa',covered:'Cubierta ✓',uncovered:'Sin cubrir',pendiente:'Pendiente'}[l.st]||l.st||'—';
-    const fmtDate = d=>{ try{ return new Date(d+'T12:00:00').toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}); }catch(e){return d||'—';} };
-    const canApprove = ['admin','supervisor'].includes(cRole) && l.st==='pendiente';
-    const canAssign  = ['admin','supervisor'].includes(cRole) && l.st==='uncovered';
-    return `<tr>
-      <td><strong>${l.emp}</strong></td><td style="font-size:11px">${l.sec||'—'}</td>
-      <td><span class="chip ${tc}">${l.type}</span></td>
-      <td class="mn">${fmtDate(l.from)}</td><td class="mn">${fmtDate(l.to)}</td><td class="mn">${l.days||'—'}</td>
-      <td>${l.vac?'<span class="chip ca">Sí</span>':'<span class="chip cn">No</span>'}</td>
-      <td style="font-size:11px">${l.sub||'—'}</td>
-      <td style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
-        <span class="chip ${sc}" id="licSt${idx}">${sl}</span>
-        ${canApprove?`<button class="btn bs xs" onclick="approveLic(${idx})">✓ Aprobar</button><button class="btn bd xs" onclick="rejectLic(${idx})">✕ Rechazar</button>`:''}
-        ${canAssign?`<button class="btn bp xs" id="licBtn${idx}" onclick="openAssignFromLic(${idx},'${(l.sec||l.sector||'').replace(/'/g,'&#39;')}','${l.from}')">Asignar suplente</button>`:''}
-      </td>
-    </tr>`;
+  const today=new Date().toISOString().slice(0,10);
+  const fmtDate = d=>{ try{ return new Date(d+'T12:00:00').toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}); }catch(e){return d||'—';} };
+
+  const rawLics = dbLoaded && DB.licencias.length ? DB.licencias : [];
+
+  const lics = rawLics.map(l=>{
+    const ended = l.fecha_hasta < today;
+    const started = l.fecha_desde <= today;
+    const vigente = started && !ended;
+    const covered = !!l.suplente_id;
+    let st;
+    if(ended)                                              st = 'finalizada';
+    else if(l.estado==='pendiente')                        st = 'pendiente';
+    else if(l.genera_vacante && !covered && vigente)       st = 'uncovered';
+    else                                                   st = 'active';
+    return {
+      _dbLic: l, id:l.id,
+      funcId: l.funcionario_id,
+      emp: l.funcionario ? `${l.funcionario.apellido}, ${l.funcionario.nombre}` : '—',
+      sec: l.funcionario?.sector?.nombre||'—',
+      type: l.tipo,
+      from: l.fecha_desde, to: l.fecha_hasta,
+      days: l.dias||Math.max(1,Math.round((new Date((l.fecha_hasta||l.fecha_desde)+'T12:00:00')-new Date((l.fecha_desde||l.fecha_hasta)+'T12:00:00'))/86400000)+1),
+      vac: l.genera_vacante,
+      sub: l.suplente ? fNombre(l.suplente) : (l.suplente_id ? 'Asignado' : '—'),
+      st, ended, vigente,
+    };
+  });
+
+  // Apply filter
+  const fil = LIC_FIL;
+  const visible = lics.filter(l=>{
+    if(fil==='vigente')    return l.vigente;
+    if(fil==='pendiente')  return l.st==='uncovered'&&l.vigente;
+    if(fil==='finalizada') return l.ended;
+    return true; // 'all'
+  });
+
+  visible.sort((a,b)=>a.emp.localeCompare(b.emp)||(a.from||'').localeCompare(b.from||''));
+
+  // Group by employee
+  const groups=[];
+  let lastKey=null;
+  visible.forEach((l,idx)=>{
+    if(l.funcId!==lastKey){ groups.push({key:l.funcId,rows:[]}); lastKey=l.funcId; }
+    groups[groups.length-1].rows.push({...l,globalIdx:idx});
+  });
+
+  if(!groups.length){
+    body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--t3);padding:30px">Sin licencias para el filtro seleccionado</td></tr>';
+    return;
+  }
+
+  let html='';
+  groups.forEach(grp=>{
+    const n=grp.rows.length;
+    grp.rows.forEach((l,ri)=>{
+      const tc={LAR:'cg',CERT:'cb2',F:'cr',LE:'ca',MAT:'cp',PAT:'cb2',DXF:'cn',CPL:'cp'}[l.type]||'cn';
+      let sc,sl;
+      if(l.st==='finalizada'){
+        sc = l.vac ? (l.sub!=='—'?'cg':'cn') : 'cn';
+        sl = l.vac ? (l.sub!=='—'?'Cubierta ✓':'Finalizada — sin suplente') : 'Finalizada';
+      } else {
+        sc = {active:'cg',covered:'cg',uncovered:'cr',pendiente:'ca'}[l.st]||'cn';
+        sl = {active:'Vigente ✓',covered:'Cubierta ✓',uncovered:'Sin cubrir',pendiente:'Pendiente'}[l.st]||'—';
+      }
+      const canAct = !l.ended && ['admin','supervisor'].includes(cRole);
+      const canAssign = canAct && l.st==='uncovered';
+      const canReassign= canAct && (l.st==='pendiente' || (l.vac && l._dbLic?.suplente_id));
+      const canApprove= canAct && l.st==='pendiente';
+      const sugs = ((canAssign||canReassign) && l._dbLic) ? getSuplenteSugeridos(l._dbLic) : [];
+      const sugHtml = sugs.length
+        ? '<div style="margin-top:4px;font-size:10px;color:var(--t2)">'+(canReassign?'Reasignar: ':'Sugeridos: ')+
+          sugs.map(s=>{const nm=fNombre(s);const cb=`asignarSuplenteLic(${JSON.stringify(l._dbLic.id)},${JSON.stringify(s.id)},${JSON.stringify(nm)})`;return `<button class="btn bs xs" style="font-size:10px" onclick="${cb.replace(/"/g,'&quot;')}">👤 ${nm}</button>`;}).join('')+
+          '</div>' : '';
+      const rowStyle = l.ended ? 'opacity:0.65' : '';
+      html+=`<tr style="${rowStyle}">`;
+      if(ri===0){
+        html+=`<td rowspan="${n}" style="vertical-align:top;padding-top:10px;border-right:2px solid var(--b)${l.ended?';opacity:0.65':''}"><strong>${l.emp}</strong></td>`;
+        html+=`<td rowspan="${n}" style="vertical-align:top;padding-top:10px;font-size:11px;border-right:2px solid var(--b)${l.ended?';opacity:0.65':''}">${l.sec||'—'}</td>`;
+      }
+      html+=`
+        <td><span class="chip ${tc}">${l.type}</span></td>
+        <td class="mn">${fmtDate(l.from)}</td><td class="mn">${fmtDate(l.to)}</td><td class="mn">${l.days||'—'}</td>
+        <td>${l.vac?'<span class="chip ca">Sí</span>':'<span class="chip cn">No</span>'}</td>
+        <td style="font-size:11px">${l.sub}</td>
+        <td style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+          <span class="chip ${sc}">${sl}</span>
+          ${canApprove?`<button class="btn bs xs" onclick="approveLic(${l.globalIdx})">✓ Aprobar</button><button class="btn bd xs" onclick="rejectLic(${l.globalIdx})">✕ Rechazar</button>`:''}
+          ${canAssign?`<button class="btn bp xs" onclick="openAssignFromLic(${JSON.stringify(l._dbLic.id)},'${(l.sec||'').replace(/'/g,'&#39;')}','${l.from}')">Asignar suplente</button>`:''}
+          ${canReassign?`<button class="btn bg xs" style="font-size:10px" onclick="openAssignFromLic(${JSON.stringify(l._dbLic.id)},'${(l.sec||'').replace(/'/g,'&#39;')}','${l.from}')">↺ Reasignar</button>`:''}
+          ${sugHtml}
+        </td>
+      </tr>`;
+    });
+  });
+  body.innerHTML=html;
+}
+
+function cobSetFil(key, val){
+  COB_FIL[key] = val;
+  renderCobertura();
+}
+
+function renderCobertura(){
+  const body=document.getElementById('coberturaBody'); if(!body) return;
+  if(!dbLoaded){ body.innerHTML='<p style="color:var(--t3);padding:20px">Cargando datos...</p>'; return; }
+
+  const today=new Date().toISOString().slice(0,10);
+  const todayD=new Date(today+'T12:00:00');
+  const fmt=d=>{try{const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'});}catch(e){return d||'—';}};
+  const fmtLong=d=>{try{const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('es-UY',{weekday:'long',day:'numeric',month:'long'});}catch(e){return d;}};
+  const isSup=['admin','supervisor'].includes(cRole);
+
+  // ── Month options from licencias + current month ──────────────────────────
+  const nowY=new Date().getFullYear(), nowM=new Date().getMonth()+1;
+  const defaultMes=`${nowY}-${String(nowM).padStart(2,'0')}`;
+  if(!COB_FIL.mes) COB_FIL.mes=defaultMes;
+
+  const mesSet=new Set([defaultMes]);
+  DB.licencias.forEach(l=>{
+    if(l.fecha_desde) mesSet.add(l.fecha_desde.slice(0,7));
+    if(l.fecha_hasta) mesSet.add(l.fecha_hasta.slice(0,7));
+  });
+  const mesOpts=[...mesSet].sort().map(m=>{
+    const [y,mo]=m.split('-');
+    const label=new Date(+y,+mo-1,1).toLocaleDateString('es-UY',{month:'long',year:'numeric'});
+    return `<option value="${m}"${m===COB_FIL.mes?' selected':''}>${label.charAt(0).toUpperCase()+label.slice(1)}</option>`;
   }).join('');
+
+  // ── Date range for selected month ─────────────────────────────────────────
+  const [mY,mM]=COB_FIL.mes.split('-').map(Number);
+  const mesFrom=`${mY}-${String(mM).padStart(2,'0')}-01`;
+  const mesTo=new Date(mY,mM,0).toISOString().slice(0,10);
+
+  // ── Filter licencias (before building option lists) ───────────────────────
+  let pending=DB.licencias.filter(l=>
+    l.genera_vacante && !l.suplente_id &&
+    ['activa','pendiente'].includes(l.estado) &&
+    l.fecha_hasta >= today &&
+    l.fecha_hasta >= mesFrom &&
+    l.fecha_desde <= mesTo
+  );
+  if(COB_FIL.cliId!=='all') pending=pending.filter(l=>
+    l.funcionario?.clinica?.id===COB_FIL.cliId || l.funcionario?.clinica_id===COB_FIL.cliId);
+  if(COB_FIL.secId!=='all') pending=pending.filter(l=>
+    l.funcionario?.sector?.id===COB_FIL.secId);
+
+  // ── Clínica / Sector options — derived from all funcionarios ──────────────
+  const cliMap=new Map(), secMap=new Map();
+  [...DB.funcionarios,...DB.suplentes,...(DB.licencias.map(l=>l.funcionario).filter(Boolean))].forEach(f=>{
+    if(f.clinica?.nombre) cliMap.set(f.clinica_id||f.clinica.nombre, f.clinica.nombre);
+    if(f.sector?.nombre)  secMap.set(f.sector_id ||f.sector.nombre,  f.sector.nombre);
+  });
+  const cliOpts='<option value="all">Todas las clínicas</option>'+
+    [...cliMap.entries()].sort((a,b)=>a[1].localeCompare(b[1]))
+      .map(([id,nm])=>`<option value="${id}"${id===COB_FIL.cliId?' selected':''}>${nm}</option>`).join('');
+  const secOpts='<option value="all">Todos los sectores</option>'+
+    [...secMap.entries()].sort((a,b)=>a[1].localeCompare(b[1]))
+      .map(([id,nm])=>`<option value="${id}"${id===COB_FIL.secId?' selected':''}>${nm}</option>`).join('');
+
+  // ── Build agenda: group licencias by "anchor day" in selected month ───────
+  // Anchor = max(fecha_desde, mesFrom) — so ongoing licencias appear from day 1
+  const dayMap=new Map();
+  pending.forEach(l=>{
+    const anchor=l.fecha_desde>mesFrom?l.fecha_desde:mesFrom;
+    if(!dayMap.has(anchor)) dayMap.set(anchor,[]);
+    dayMap.get(anchor).push(l);
+  });
+  const days=[...dayMap.keys()].sort();
+
+  // ── Render filter bar ─────────────────────────────────────────────────────
+  const filterBar=`
+    <div class="cob-filters">
+      <div><label>Mes</label><br>
+        <select onchange="cobSetFil('mes',this.value)">${mesOpts}</select>
+      </div>
+      <div><label>Clínica</label><br>
+        <select onchange="cobSetFil('cliId',this.value)">${cliOpts}</select>
+      </div>
+      <div><label>Sector</label><br>
+        <select onchange="cobSetFil('secId',this.value)">${secOpts}</select>
+      </div>
+      <div style="margin-left:auto;align-self:flex-end;font-size:11px;color:var(--t3)">
+        ${pending.length} vacante${pending.length!==1?'s':''} sin cubrir
+      </div>
+    </div>`;
+
+  // ── Empty state ───────────────────────────────────────────────────────────
+  if(!days.length){
+    body.innerHTML=filterBar+`
+      <div style="text-align:center;padding:48px 20px;color:var(--t3)">
+        <div style="font-size:32px;margin-bottom:12px">✅</div>
+        <div style="font-size:15px;font-weight:600;color:var(--green)">Sin coberturas pendientes</div>
+        <div style="font-size:12px;margin-top:6px">No hay vacantes activas en el período seleccionado.</div>
+      </div>`;
+    return;
+  }
+
+  // ── Render agenda ─────────────────────────────────────────────────────────
+  const TURNO_LABEL={M:'Mañana',T:'Tarde',TS:'Tarde',V:'Vespertino',N:'Noche',NO:'Noche',ROT:'Rotativo'};
+  let agendaHtml='';
+
+  days.forEach(day=>{
+    const lics=dayMap.get(day);
+    const isToday=day===today;
+    const dayLabel=isToday?'Hoy — '+fmtLong(day):fmtLong(day);
+    agendaHtml+=`<div class="cob-day-hdr">
+      <span${isToday?' style="color:var(--blue)"':''}>${dayLabel}</span>
+      <span class="chip ca" style="font-size:10px">${lics.length} vacante${lics.length>1?'s':''}</span>
+    </div>`;
+
+    lics.forEach(l=>{
+      const emp=l.funcionario?fNombre(l.funcionario):'—';
+      const sec=l.funcionario?.sector?.nombre||'—';
+      const turno=TURNO_LABEL[String(l.funcionario?.turno_fijo||'').toUpperCase()]||l.funcionario?.turno_fijo||'—';
+      const daysLeft=Math.max(0,Math.round((new Date(l.fecha_hasta+'T12:00:00')-todayD)/86400000));
+      const totalDias=Math.round((new Date(l.fecha_hasta+'T12:00:00')-new Date(l.fecha_desde+'T12:00:00'))/86400000)+1;
+      const urgColor=daysLeft<=3?'var(--red)':daysLeft<=7?'var(--amber)':'var(--t3)';
+      const urgLabel=daysLeft===0?'Vence hoy':daysLeft===1?'Vence mañana':`Quedan ${daysLeft} días`;
+      const tipoChip=`<span class="chip cn" style="font-size:9px">${l.tipo||'Licencia'}</span>`;
+      const sugs=isSup?getSuplenteSugeridos(l):[];
+
+      let supHtml='';
+      if(sugs.length){
+        supHtml=sugs.map(s=>{
+          const nm=fNombre(s);
+          const sc=s.sector?.nombre||s.clinica?.nombre||'';
+          const g=DB.turnos.filter(t=>t.funcionario_id===s.id&&isW(t.codigo)).length;
+          // UUIDs quoted safely with JSON.stringify
+          const cb=`asignarSuplenteLic(${JSON.stringify(l.id)},${JSON.stringify(s.id)},${JSON.stringify(nm)})`;
+          return `<button class="cob-sup-btn" onclick="${cb.replace(/"/g,'&quot;')}">
+            👤 <span>${nm}</span>
+            <span class="gsec">${sc||''}${g?' · '+g+' gd':''}</span>
+          </button>`;
+        }).join('');
+      } else {
+        supHtml=`<span style="font-size:11px;color:var(--t3);padding:4px 0">${
+          isSup?'Sin suplentes disponibles en este período':'Acción de supervisor'}</span>`;
+      }
+
+      agendaHtml+=`
+        <div class="cob-row">
+          <div class="cob-row-info">
+            <div class="name">${emp}</div>
+            <div class="meta">${sec} · ${tipoChip} · <strong>${turno}</strong></div>
+            <div class="dates">📅 ${fmt(l.fecha_desde)} → ${fmt(l.fecha_hasta)} · ${totalDias} días en total · <span style="color:${urgColor};font-weight:600">${urgLabel}</span></div>
+            ${l.observaciones?`<div style="font-size:10px;color:var(--t3);margin-top:3px">💬 ${l.observaciones}</div>`:''}
+          </div>
+          <div class="cob-row-sugs">${supHtml}</div>
+        </div>`;
+    });
+  });
+
+  body.innerHTML=filterBar+`<div>${agendaHtml}</div>`;
 }
 
 function renderLAR(){
@@ -1510,26 +1846,28 @@ function renderAlerts(){
 
   if(dbLoaded){
     if(['admin','supervisor'].includes(cRole)){
-      // 7ª guardia
+      // 7ª guardia: verificar días CONSECUTIVOS (no total mensual)
       DB.funcionarios.forEach(f=>{
-        const g=DB.turnos.filter(t=>t.funcionario_id===f.id&&t.codigo&&!skip.has(t.codigo)).length;
-        if(g>=7) items.push({t:'cr2',ic:'🚨',
-          title:`7ª Guardia — ${fNombre(f)} (${f.sector?.nombre||''})`,
-          desc:`${g} guardias este mes · genera horas extra obligatorias`,
+        const wk=DB.turnos.filter(t=>t.funcionario_id===f.id&&t.codigo&&!skip.has(t.codigo)).map(t=>t.fecha).sort();
+        let maxC=wk.length?1:0,cur=1;
+        for(let i=1;i<wk.length;i++){
+          const diff=Math.round((new Date(wk[i]+'T12:00:00')-new Date(wk[i-1]+'T12:00:00'))/86400000);
+          cur=diff===1?cur+1:1;if(cur>maxC)maxC=cur;
+        }
+        if(maxC>=7) items.push({t:'cr2',ic:'🚨',
+          title:`7ª Guardia consecutiva — ${fNombre(f)} (${f.sector?.nombre||''})`,
+          desc:`${maxC} días seguidos sin descanso · genera horas extra obligatorias`,
           meta:f.clinica?.nombre||'',
           btn:`<button class="btn bp xs" onclick="toast('ok','Registrado','Confirmado en RRHH')">Confirmar</button>`
         });
       });
-      // Vacantes sin suplente
-      DB.licencias.filter(l=>l.genera_vacante&&!l.suplente_id&&['activa','pendiente'].includes(l.estado)).forEach(l=>{
-        const emp=l.funcionario?fNombre(l.funcionario):'—';
-        const sec=l.funcionario?.sector?.nombre||'—';
-        items.push({t:'wa',ic:'⚠️',
-          title:`Vacante sin cubrir — ${sec}`,
-          desc:`${emp} · ${l.tipo} · ${l.fecha_desde}`,
-          meta:'Sin suplente asignado',
-          btn:`<button class="btn bp xs" onclick="go('licenses')">Asignar</button>`
-        });
+      // Vacantes sin suplente — agrupadas
+      const vacsSinCub=DB.licencias.filter(l=>l.genera_vacante&&!l.suplente_id&&['activa','pendiente'].includes(l.estado));
+      if(vacsSinCub.length) items.push({t:'wa',ic:'⚠️',
+        title:`${vacsSinCub.length} vacante${vacsSinCub.length>1?'s':''} sin suplente`,
+        desc:vacsSinCub.slice(0,3).map(l=>`${l.funcionario?fNombre(l.funcionario):'—'} · ${l.tipo} · ${l.fecha_desde}`).join(' · '),
+        meta:'Sin suplente asignado',
+        btn:`<button class="btn bp xs" onclick="go('licenses')">Asignar</button>`
       });
       // Cambios pendientes de aprobación
       const pCambios=DB.cambios.filter(x=>x.estado==='pendiente');
@@ -1657,13 +1995,25 @@ function refreshMyLicBody(){
 }
 
 // Assign suplente modal
-function openAssignModal(sector, fecha, vacId){
+function openAssignModal(sector, fecha){
+  // Armar lista de suplentes ordenada por score (misma lógica que getSuplenteSugeridos)
   const subs = dbLoaded && DB.suplentes.length ? DB.suplentes : SUBS;
-  const opts = subs.map((s,i)=>{
-    const nm = s.apellido ? `${s.apellido}, ${s.nombre}` : s.name;
-    const pct = s.pct || s.compliance || 80;
-    const sen = s.sen || s.seniority || 1;
-    return `<option value="${i}">${nm} (${i+1}° · ${sen} años · ${pct}%)</option>`;
+  // Obtener la licencia actual para scoring
+  const licActual = window._licId ? DB.licencias.find(l=>l.id===window._licId) : null;
+  const empSector = licActual?.funcionario?.sector?.nombre||sector||'';
+  const empClinica= licActual?.funcionario?.clinica?.nombre||'';
+  const skip2=new Set(['LAR','CERT','LE','F','DXF','CPL','E','LX1','LX2','LX3','LX4','LXE','NO CONVOCAR','MAT','PAT']);
+  const scored = subs.filter(s=>s.activo!==false).map(s=>{
+    const ss=s.sector?.nombre||''; const sc=s.clinica?.nombre||'';
+    const same=ss===empSector||sc===empClinica?2:0;
+    const g=DB.turnos.filter(t=>t.funcionario_id===s.id&&t.codigo&&!skip2.has(t.codigo)).length;
+    return {...s, _score:same-g*0.01};
+  }).sort((a,b)=>b._score-a._score);
+  const opts = scored.map((s,i)=>{
+    const nm = s.apellido ? `${s.apellido}, ${s.nombre}` : s.name||'—';
+    const sec2 = s.sector?.nombre||s.clinica?.nombre||'';
+    const g = DB.turnos.filter(t=>t.funcionario_id===s.id&&t.codigo&&!skip2.has(t.codigo)).length;
+    return `<option value="${s.id||i}">${nm}${sec2?' · '+sec2:''}${g?' ('+g+' gd)':''}</option>`;
   }).join('');
   // Build inline modal
   const existing = document.getElementById('assignOv');
@@ -1691,52 +2041,64 @@ function openAssignModal(sector, fecha, vacId){
     </div>
     <div class="mf">
       <button class="btn bg" onclick="document.getElementById('assignOv').remove()">Cancelar</button>
-      <button class="btn bp" onclick="confirmAssign('${sector}','${fecha}',${vacId})">✓ Confirmar Asignación</button>
+      <button class="btn bp" onclick="confirmAssign('${sector}','${fecha}')">✓ Confirmar Asignación</button>
     </div>
   </div>`;
   document.body.appendChild(ov);
 }
 
-async function confirmAssign(sector, fecha, vacId){
-  const selIdx = parseInt(document.getElementById('asgSub')?.value||0);
+async function confirmAssign(sector, fecha){
+  // El select ahora usa el ID del suplente como value
+  const supId  = document.getElementById('asgSub')?.value;
   const code   = document.getElementById('asgCode')?.value||'M';
   const nota   = document.getElementById('asgNota')?.value||'';
   const subs   = dbLoaded && DB.suplentes.length ? DB.suplentes : SUBS;
-  const sub    = subs[selIdx];
+  const sub    = subs.find(s=>String(s.id)===String(supId)) || subs[0];
   const subNm  = sub?.apellido ? `${sub.apellido}, ${sub.nombre}` : sub?.name||'—';
-  // Save to Supabase if available
+
+  // Guardar turnos del suplente para el rango de la licencia
   if(sb && sub?.id){
-    const dateStr = fecha.includes('-') ? fecha : `2026-01-${fecha.split('/')[0].padStart(2,'0')}`;
-    await saveTurno(sub.id, dateStr, code, null, nota||`Cubre vacante ${sector}`);
-  }
-  // Close modal
-  document.getElementById('assignOv')?.remove();
-  // Update license state in memory AND Supabase
-  const li = window._licIdx;
-  if(li != null){
-    if(LIC_DATA[li]){
-      LIC_DATA[li].st='covered';
-      LIC_DATA[li].sub=subNm;
-      // Persist to Supabase: update licencia with suplente_id
-      if(sb && LIC_DATA[li].id && sub?.id){
-        sb.from('licencias').update({suplente_id: sub.id, estado:'activa'}).eq('id', LIC_DATA[li].id)
-          .then(({error})=>{ if(error) console.error('Error updating licencia:', error); });
+    const licId  = window._licId;
+    const dbLic  = licId ? DB.licencias.find(l=>l.id===licId) : null;
+    if(dbLic){
+      // Guardar un turno por cada día del período de la licencia
+      const from = new Date(dbLic.fecha_desde+'T12:00:00');
+      const to   = new Date(dbLic.fecha_hasta+'T12:00:00');
+      for(let d=new Date(from.getTime()); d<=to; d.setDate(d.getDate()+1)){
+        await saveTurno(sub.id, d.toISOString().slice(0,10), code, null, nota||`Cubre vacante ${sector}`);
       }
-      // Also update DB.licencias in memory
-      const dbLic = DB.licencias.find(l=>l.id===LIC_DATA[li].id);
-      if(dbLic){ dbLic.suplente_id=sub?.id; }
+    } else {
+      const dateStr = fecha.includes('-') ? fecha : `2026-01-${fecha.split('/')[0].padStart(2,'0')}`;
+      await saveTurno(sub.id, dateStr, code, null, nota||`Cubre vacante ${sector}`);
     }
-    window._licIdx = null;
   }
-  // Remove assigned alert from list
+
+  document.getElementById('assignOv')?.remove();
+
+  // Actualizar DB.licencias en memoria y Supabase
+  const licId = window._licId;
+  if(licId != null){
+    const dbLic = DB.licencias.find(l=>l.id===licId);
+    if(dbLic){
+      dbLic.suplente_id = sub?.id;
+      dbLic.estado      = 'activa';
+      if(sub) dbLic.suplente = {apellido:sub.apellido||'', nombre:sub.nombre||''};
+    }
+    if(sb && sub?.id){
+      await sb.from('licencias').update({suplente_id:sub.id, estado:'activa'}).eq('id',licId);
+    }
+    window._licId = null;
+  }
+
   if(window._alertRemoveIdx != null){
     dismissAlert(window._alertRemoveIdx);
     window._alertRemoveIdx = null;
   }
-  // Refresh alerts and licenses
+
   renderAlerts();
   renderLics();
-  toast('ok',`${subNm} asignado/a`,`Cubrirá ${sector} el ${fecha} · Código: ${code}`);
+  renderCobertura();
+  toast('ok',`${subNm} asignado/a`,`Cubrirá ${sector} · ${fecha} · Código: ${code}`);
 }
 
 
@@ -1757,16 +2119,16 @@ async function rejectLic(idx){
   }
 }
 
-function openAssignFromLic(idx, sector, fecha){
-  window._licIdx = idx;
+function openAssignFromLic(licId, sector, fecha){
+  window._licId = licId;       // UUID de la licencia
   window._alertRemoveIdx = null;
-  openAssignModal(sector, fecha, idx);
+  openAssignModal(sector, fecha);
 }
 
 function openAssignFromAlert(alertIdx, sector, fecha){
-  window._licIdx = null;
+  window._licId = null;
   window._alertRemoveIdx = alertIdx;
-  openAssignModal(sector, fecha, alertIdx);
+  openAssignModal(sector, fecha);
 }
 
 function approveCambioFromAlert(alertIdx){
@@ -1803,9 +2165,18 @@ async function markRead(){
 // ........................................................
 // GENERATION STATE
 // ........................................................
-let GENS = [
-  {id:1, mes:'Enero 2026',  mesNum:1,  anio:2026, func:47, alertas:2, estado:'aprobada',  fecha:'01/01/2026'},
-];
+let GENS = [];
+function saveGENS(){ try{ localStorage.setItem('guardiapp_gens', JSON.stringify(GENS)); }catch(e){} }
+function loadGENS(){
+  try{
+    const s = localStorage.getItem('guardiapp_gens');
+    if(s){ const arr=JSON.parse(s); if(Array.isArray(arr)){ GENS.splice(0,GENS.length,...arr); return; } }
+  }catch(e){}
+  // default seed so UI is never empty on first load
+  GENS.splice(0, GENS.length, {id:1, mes:'Enero 2026', mesNum:1, anio:2026, func:47, alertas:2, estado:'aprobada', fecha:'01/01/2026'});
+}
+loadGENS();
+
 // Current gen being built (not yet approved)
 let DRAFT_GEN = null;
 // License state (persists across re-renders)
@@ -1895,60 +2266,171 @@ function populateGenMesOptions(){
   const prev=sel.value;
   const generated=new Set((GENS||[]).map(getGeneratedMonthKey).filter(Boolean));
   const months=[];
-  const src=getAvailableMonthsGlobal();
-  const lastGen=(GENS||[]).map(getGeneratedMonthKey).filter(Boolean).sort().slice(-1)[0];
-  const base=lastGen ? ymLabelFromKey(lastGen) : (src[src.length-1]||{year:2026,month:0});
-  let y=base.year, m=base.month;
-  for(let i=0;i<6;i++){
-    m+=1;
-    if(m>11){ m=0; y+=1; }
+  // Siempre empezar desde el mes actual — nunca mostrar meses pasados
+  const now=new Date();
+  let y=now.getUTCFullYear(), m=now.getUTCMonth(); // 0-indexed
+  for(let i=0;i<12;i++){
     const key=`${y}-${String(m+1).padStart(2,'0')}`;
     if(!generated.has(key)) months.push({key,label:getMonthLabel(y,m)});
+    m++;
+    if(m>11){ m=0; y++; }
   }
   if(!months.length){
-    const now=new Date();
-    const key=`${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
-    months.push({key,label:getMonthLabel(now.getUTCFullYear(),now.getUTCMonth())});
+    // Todos los próximos meses ya generados — ofrecer el mes 13 adelante
+    months.push({key:`${y}-${String(m+1).padStart(2,'0')}`,label:getMonthLabel(y,m)});
   }
   sel.innerHTML=months.map(mo=>`<option value="${mo.label}">${mo.label}</option>`).join('');
   if(prev && [...sel.options].some(o=>o.value===prev)) sel.value=prev;
 }
 
-function startGen(){
-  const mesVal = document.getElementById('genMes')?.value||'Febrero 2026';
-  const parsed=parseMesLabel(mesVal)||{year:2026,month:1};
-  // Check if already generated
-  if(GENS.find(g=>g.mes===mesVal&&g.estado!=='cancelada')){
-    toast('wa','Ya existe','Este mes ya fue generado. Buscalo en el historial para validar.');
-    return;
+async function startGen(){
+  if(!dbLoaded || !DB.funcionarios.length){
+    toast('wa','Sin datos','Sincronizá la base de datos primero.'); return;
   }
+  const mesVal=document.getElementById('genMes')?.value||'Marzo 2026';
+  const parsed=parseMesLabel(mesVal)||{year:2026,month:2};
+  if(GENS.find(g=>g.mes===mesVal&&g.estado!=='cancelada')){
+    toast('wa','Ya existe','Este mes ya fue generado. Buscalo en el historial para validar.'); return;
+  }
+
   document.getElementById('genIdle').style.display='none';
   document.getElementById('genRun').classList.remove('gone');
-  const steps_gen = GSTEPS.slice(0,8); // no incluir envio de emails — eso va luego de validar
+  const steps_gen=GSTEPS.slice(0,8);
   const sd=document.getElementById('genSteps');
   sd.innerHTML=steps_gen.map((_,i)=>`<div class="genstep" id="gs${i}"><span class="gsic">○</span>${_}</div>`).join('');
-  let cur=0;
-  const next=()=>{
-    if(cur>0){const p=document.getElementById('gs'+(cur-1));if(p){p.className='genstep done';p.querySelector('.gsic').textContent='✓';}}
-    if(cur<steps_gen.length){
-      const el=document.getElementById('gs'+cur);
-      if(el){el.className='genstep run';el.querySelector('.gsic').textContent='⟳';}
-      document.getElementById('genStatus').textContent=steps_gen[cur]+'...';
-      cur++;setTimeout(next,700);
-    }else{
-      document.getElementById('genRun').classList.add('gone');
-      document.getElementById('genIdle').style.display='block';
-      // Add to history as draft (pending validation)
-      DRAFT_GEN = {id:Date.now(), mes:mesVal, mesNum:parsed.month+1, anio:parsed.year, func:EMPS.length||47, alertas:2, estado:'borrador', fecha:new Date().toLocaleDateString('es-UY')};
-      GENS.unshift(DRAFT_GEN);
-      renderGenHistory();
-      populateSendMes();
-      populateGenMesOptions();
-      toast('ok',`${mesVal} generado — pendiente de validación`,
-        'Revisá la planilla, editá si necesario, luego aprobá para enviar agendas.');
-    }
+
+  const markStep=i=>{
+    if(i>0){const p=document.getElementById(`gs${i-1}`);if(p){p.className='genstep done';p.querySelector('.gsic').textContent='✓';}}
+    const el=document.getElementById(`gs${i}`);
+    if(el){el.className='genstep run';el.querySelector('.gsic').textContent='⟳';}
+    document.getElementById('genStatus').textContent=(steps_gen[i]||'Procesando')+'...';
   };
-  next();
+
+  const {year,month}=parsed;
+  const daysInMonth=new Date(Date.UTC(year,month+1,0)).getUTCDate();
+
+  function daysBetween(refStr,dateStr){
+    return Math.round((new Date(dateStr+'T12:00:00')-new Date(refStr+'T12:00:00'))/86400000);
+  }
+  function isWorkDay(patron,cicloRef,dateStr){
+    const wd=(new Date(dateStr+'T12:00:00').getUTCDay()+6)%7; // 0=Lun,6=Dom
+    if(patron==='4x1'){
+      if(!cicloRef) return wd<5;
+      const off=((daysBetween(cicloRef,dateStr)%5)+5)%5;
+      return off<4;
+    }
+    if(patron==='6x1'){
+      if(!cicloRef) return wd<6;
+      const off=((daysBetween(cicloRef,dateStr)%7)+7)%7;
+      return off<6;
+    }
+    if(patron==='LS') return wd<6;  // Lun-Sáb (Mon=0…Sat=5, excl Dom=6)
+    if(patron==='SD') return wd>=5; // Solo Sáb (5) y Dom (6)
+    if(patron==='36H') return true; // Flexible — siempre disponible, supervisor asigna
+    return wd<5; // LV: Lun-Vie (default)
+  }
+
+  markStep(0);
+  const records=[];
+  let alert7=0;
+  const chunkSize=Math.ceil(DB.funcionarios.length/6)||1;
+
+  const primerDia=`${year}-${String(month+1).padStart(2,'0')}-01`;
+  let cmpCount=0;
+  for(let fi=0;fi<DB.funcionarios.length;fi++){
+    if(fi>0 && fi%chunkSize===0) markStep(Math.min(Math.floor(fi/chunkSize),5));
+    const f=DB.funcionarios[fi];
+    // Aplicar patron_historico si existe para este mes
+    const ph=getPatronVigente(f.id, primerDia);
+    const patron     =(ph?.patron)    ||f.patron    ||'LV';
+    const cicloRef   =(ph?.ciclo_ref) ||f.ciclo_ref ||null;
+    const turnoBase  =(ph?.turno_fijo)||f.turno_fijo||'M';
+    const turnoCiclo =ph?.turno_ciclo?.length?[...ph.turno_ciclo]:(f.turno_ciclo?.length?[...f.turno_ciclo]:null);
+    const turnoSemana=(ph?.turno_semana)||f.turno_semana||{};
+    const turnoSab   =f.turno_sabado||null;
+    const turnoDom   =f.turno_domingo||null;
+    const sectorId   =f.sector_id||null;
+    // Birthday detection for this month
+    const bdayDate=f.fecha_nacimiento?new Date(f.fecha_nacimiento+'T12:00:00'):null;
+    const bdayDay=bdayDate&&bdayDate.getUTCMonth()===month?bdayDate.getUTCDate():null;
+    const cycleLen=(patron==='4x1'?5:7);
+    const cr=cicloRef?new Date(cicloRef+'T12:00:00'):null;
+    let consec=0; let bad7=false;
+    for(let d=1;d<=daysInMonth;d++){
+      const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const lic=getLicenciaCodeForDate(f.id,dateStr);
+      if(lic){consec=0;continue;}
+      if(isWorkDay(patron,cicloRef,dateStr)){
+        const wd=(new Date(dateStr+'T12:00:00').getUTCDay()+6)%7; // 0=Lun,5=Sáb,6=Dom
+        const isSat=(wd===5);
+        const isSun=(wd===6);
+        const isBday=(bdayDay!==null && d===bdayDay);
+        let turnoCode;
+        if(isBday){
+          turnoCode='CMP'; cmpCount++;
+        } else {
+          // Prioridad: turno_semana > turno_ciclo > turno_domingo > turno_sabado > turno_fijo
+          const isoWd=(isSun?7:wd+1); // 1=Lun ... 7=Dom
+          const semOverride=turnoSemana[String(isoWd)];
+          if(semOverride){
+            turnoCode=semOverride;
+          } else if(turnoCiclo){
+            const off=cr?Math.round((new Date(dateStr+'T12:00:00')-cr)/86400000)%cycleLen:0;
+            const offNorm=((off%turnoCiclo.length)+turnoCiclo.length)%turnoCiclo.length;
+            turnoCode=turnoCiclo[offNorm]||turnoBase;
+          } else if(isSun&&turnoDom){
+            turnoCode=turnoDom;
+          } else if(isSat&&turnoSab){
+            turnoCode=turnoSab;
+          } else {
+            turnoCode=turnoBase;
+          }
+        }
+        records.push({funcionario_id:f.id,fecha:dateStr,codigo:turnoCode,sector_id:sectorId});
+        consec++; if(consec>=7) bad7=true;
+      } else {
+        consec=0;
+      }
+    }
+    if(bad7) alert7++;
+  }
+
+  // Batch upsert in chunks of 500
+  markStep(6);
+  const BATCH=500;
+  for(let i=0;i<records.length;i+=BATCH){
+    const ok=await saveTurnosBatch(records.slice(i,i+BATCH));
+    if(!ok) break;
+  }
+
+  markStep(7);
+  // Generar turnos de cobertura para suplentes asignados a licencias de este mes
+  const mesFrom=primerDia;
+  const mesTo=`${year}-${String(month+1).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
+  const licsConSuplente=(DB.licencias||[]).filter(l=>
+    l.suplente_id && l.genera_vacante && l.estado!=='cancelada' &&
+    (l.fecha_desde||'')<=mesTo && (l.fecha_hasta||'')>=mesFrom
+  );
+  let supCount=0;
+  for(const lic of licsConSuplente) supCount+=await generateSuplenteTurnos(lic);
+  if(supCount) toast('ok','Suplentes generados',`${supCount} turnos de cobertura creados`);
+
+  await new Promise(r=>setTimeout(r,300));
+  for(let i=0;i<8;i++){const p=document.getElementById(`gs${i}`);if(p){p.className='genstep done';p.querySelector('.gsic').textContent='✓';}}
+  document.getElementById('genRun').classList.add('gone');
+  document.getElementById('genIdle').style.display='block';
+
+  DRAFT_GEN={id:Date.now(),mes:mesVal,mesNum:month+1,anio:year,
+    func:DB.funcionarios.length,alertas:alert7,estado:'borrador',
+    fecha:new Date().toLocaleDateString('es-UY')};
+  GENS.unshift(DRAFT_GEN);
+  saveGENS();
+  renderGenHistory();
+  populateSendMes();
+  populateGenMesOptions();
+  await loadDB();
+  toast('ok',`${mesVal} generado — ${records.length} turnos · ${alert7} alertas 7ª guardia${cmpCount?` · 🎂 ${cmpCount} cumpleaños`:''}`,
+    'Revisá la planilla, editá si necesario, luego aprobá para enviar agendas.');
 }
 
 function renderGenHistory(){
@@ -1964,9 +2446,11 @@ function renderGenHistory(){
     const actions = g.estado==='borrador'
       ? `<button class="btn bg xs" onclick="previewGen(${i})">👁 Ver</button>
          <button class="btn bg xs" onclick="downloadGenXLSX(${i})">⬇ Excel</button>
-         <button class="btn bp xs" onclick="openValidate(${i})">✓ Validar</button>`
+         <button class="btn bp xs" onclick="openValidate(${i})">✓ Validar</button>
+         <button class="btn bd xs" onclick="deleteGen(${i})" title="Eliminar esta generación y sus turnos">🗑</button>`
       : `<button class="btn bg xs" onclick="previewGen(${i})">👁 Ver</button>
-         <button class="btn bg xs" onclick="downloadGenXLSX(${i})">⬇ Excel</button>`;
+         <button class="btn bg xs" onclick="downloadGenXLSX(${i})">⬇ Excel</button>
+         <button class="btn bd xs" onclick="deleteGen(${i})" title="Eliminar esta generación y sus turnos">🗑</button>`;
     return `<tr>
       <td class="mn">${g.fecha}</td>
       <td><strong>${g.mes}</strong></td>
@@ -2004,6 +2488,16 @@ function openValidate(genIdx){
   renderGenGrid();
   const g = GENS[genIdx];
   document.querySelector('#genValidM .mh-t').textContent = `✓ Validar Planilla — ${g?.mes||''}`;
+  const chips = document.getElementById('genValAlertChips');
+  if(chips && g){
+    const alert7 = g.alertas||0;
+    const vacantes = DB.licencias.filter(l=>l.genera_vacante&&!l.suplente_id&&['activa','pendiente'].includes(l.estado)).length;
+    chips.innerHTML = [
+      alert7>0 ? `<span class="chip cr">🚨 ${alert7} 7ª guardia</span>` : '',
+      vacantes>0 ? `<span class="chip ca">⚠ ${vacantes} vacante${vacantes>1?'s':''} sin cubrir</span>` : '',
+      alert7===0&&vacantes===0 ? '<span class="chip cg">✓ Sin alertas</span>' : ''
+    ].join(' ');
+  }
 }
 
 // ........................................................
@@ -2686,6 +3180,22 @@ async function saveLic(){
   if(actTab) swTab(actTab,'tLicA');
 }
 
+function toggleCicloRef(){
+  const p=document.getElementById('ePatron')?.value;
+  const box=document.getElementById('eCicloRefBox');
+  const sabBox=document.getElementById('eTurnoSabBox');
+  const domBox=document.getElementById('eTurnoDomBox');
+  const cicloBox=document.getElementById('eTurnoCicloBox');
+  // ciclo_ref solo aplica a patrones cíclicos (4x1, 6x1)
+  if(box) box.style.display=(p==='4x1'||p==='6x1')?'':'none';
+  // turno_ciclo solo aplica a 4x1 o 6x1
+  if(cicloBox) cicloBox.style.display=(p==='4x1'||p==='6x1')?'':'none';
+  // turno_sabado solo aplica a Lunes-Sábado (LS)
+  if(sabBox) sabBox.style.display=(p==='LS')?'':'none';
+  // turno_domingo aplica a LS, 4x1, 6x1, 36H (cualquier patrón que trabaje domingos)
+  if(domBox) domBox.style.display=(p==='LS'||p==='4x1'||p==='6x1'||p==='36H')?'':'none';
+}
+
 function editEmp(btn){
   const row = btn.closest('tr');
   const name = row?.querySelector('td strong')?.textContent?.trim()||'';
@@ -2709,16 +3219,34 @@ function editEmpByName(name){
   window._editEmpId=dbEmp.id;
   window._editEmpRow=null;
   const full=fNombre(dbEmp);
+  if(document.getElementById('eNumero')) document.getElementById('eNumero').value=dbEmp.numero||'';
   if(document.getElementById('eApNom')) document.getElementById('eApNom').value=full;
   if(document.getElementById('eTipo')) document.getElementById('eTipo').value=(dbEmp.tipo==='suplente'?'Suplente':'Fijo');
   setSelByText('eCli', dbEmp.clinica?.nombre||'');
   setSelByText('eSec', dbEmp.sector?.nombre||'');
-  const shiftMap={M:'Mañana',TS:'Tarde',T:'Tarde',NO:'Noche',N:'Noche',ROT:'Rotativo',ROTATIVO:'Rotativo'};
-  setSelByText('eTurno', shiftMap[String(dbEmp.turno_fijo||'').toUpperCase()]||dbEmp.turno_fijo||'');
+  // Normalizar código de turno al valor del <option> (M, T, V, N, ROT)
+  const tCode=String(dbEmp.turno_fijo||'').toUpperCase();
+  const tNorm={TS:'T',NO:'N',ROTATIVO:'ROT'}[tCode]||tCode||'M';
+  const turnoEl=document.getElementById('eTurno'); if(turnoEl) turnoEl.value=tNorm;
   if(document.getElementById('eFnac')) document.getElementById('eFnac').value=dbEmp.fecha_nacimiento||'';
+  if(document.getElementById('eFIng')) document.getElementById('eFIng').value=dbEmp.fecha_ingreso||'';
   if(document.getElementById('eTel')) document.getElementById('eTel').value=dbEmp.telefono||'';
   if(document.getElementById('eEmail')) document.getElementById('eEmail').value=dbEmp.email||'';
   if(document.getElementById('eHs')) document.getElementById('eHs').value=dbEmp.horas_semana||36;
+  const patronEl=document.getElementById('ePatron'); if(patronEl) patronEl.value=dbEmp.patron||'LV';
+  const cicloEl=document.getElementById('eCicloRef'); if(cicloEl) cicloEl.value=dbEmp.ciclo_ref||'';
+  const turnoSabEl=document.getElementById('eTurnoSab'); if(turnoSabEl) turnoSabEl.value=dbEmp.turno_sabado||'';
+  // Nuevos campos: turno_domingo, turno_ciclo, turno_semana
+  const turnoDomEl=document.getElementById('eTurnoDom'); if(turnoDomEl) turnoDomEl.value=dbEmp.turno_domingo||'';
+  const turnoCicloEl=document.getElementById('eTurnoCiclo'); if(turnoCicloEl) turnoCicloEl.value=(dbEmp.turno_ciclo||[]).join(',');
+  const ts=dbEmp.turno_semana||{};
+  for(let i=1;i<=7;i++){
+    const sel=document.getElementById(`eTsem${i}`); if(sel) sel.value=ts[String(i)]||'';
+  }
+  // Expandir detalles de turno_semana si tiene algún valor seteado
+  const semDet=document.getElementById('eTurnoSemDet');
+  if(semDet) semDet.open=Object.values(ts).some(v=>v);
+  toggleCicloRef();
   document.querySelector('#empM .mh-t').textContent='✏️ Editar Funcionario — '+full;
   openM('empM');
 }
@@ -2785,11 +3313,15 @@ function resetAndOpenEmpModal(tipoDefault='fijo'){
   window._editEmpRow=null;
   window._editEmpId=null;
   document.querySelector('#empM .mh-t').textContent='＋ Nuevo Funcionario';
-  ['eApNom','eEmail','eTel','eFnac','eFingreso'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['eNumero','eApNom','eEmail','eTel','eFnac','eFIng'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   const hsEl=document.getElementById('eHs'); if(hsEl) hsEl.value='36';
   const adEl=document.getElementById('eAlertDias'); if(adEl) adEl.value='45';
   // Reset selects to first option
-  ['eTipo','eCli','eSec','eTurno'].forEach(id=>{ const el=document.getElementById(id); if(el) el.selectedIndex=0; });
+  ['eTipo','eCli','eSec','eTurno','ePatron'].forEach(id=>{ const el=document.getElementById(id); if(el) el.selectedIndex=0; });
+  const cicloEl=document.getElementById('eCicloRef'); if(cicloEl) cicloEl.value='';
+  const cicloBox=document.getElementById('eCicloRefBox'); if(cicloBox) cicloBox.style.display='none';
+  const turnoSabEl=document.getElementById('eTurnoSab'); if(turnoSabEl) turnoSabEl.value='';
+  const turnoSabBox=document.getElementById('eTurnoSabBox'); if(turnoSabBox) turnoSabBox.style.display='none';
   const chk=document.getElementById('eTitular'); if(chk) chk.checked=false;
   toggleTitularidad(false);
   const t=document.getElementById('eTipo');
@@ -2811,22 +3343,21 @@ async function getIdByNombre(table, nombre){
 }
 
 async function saveEmp(){
-  const raw  = document.getElementById('eApNom')?.value.trim();
-  const email= document.getElementById('eEmail')?.value.trim();
-  const tel  = document.getElementById('eTel')?.value.trim();
-  const fnac      = document.getElementById('eFnac')?.value;
-  const fingreso  = document.getElementById('eFingreso')?.value||null;
+  const raw   = document.getElementById('eApNom')?.value.trim();
+  const email = document.getElementById('eEmail')?.value.trim();
+  const tel   = document.getElementById('eTel')?.value.trim();
+  const fnac  = document.getElementById('eFnac')?.value;
+  const fing  = document.getElementById('eFIng')?.value||null;
   const alertDias = parseInt(document.getElementById('eAlertDias')?.value)||45;
-  const hs        = parseInt(document.getElementById('eHs')?.value)||36;
-  const tipo = document.getElementById('eTipo')?.value==='Fijo'?'fijo':'suplente';
+  const hs    = parseInt(document.getElementById('eHs')?.value)||36;
+  const tipo  = document.getElementById('eTipo')?.value==='Fijo'?'fijo':'suplente';
   const titularidad_temp = tipo==='suplente' && !!(document.getElementById('eTitular')?.checked);
   const cliTxt = document.getElementById('eCli')?.value||'';
   const secTxt = titularidad_temp
     ? (document.getElementById('eTitSector')?.value||document.getElementById('eSec')?.value||'')
     : (document.getElementById('eSec')?.value||'');
-  const tTxt = document.getElementById('eTurno')?.value||'Mañana';
-  const turnoMap={'Mañana':'M','Tarde':'TS','Noche':'NO','Rotativo':'ROT'};
-  const turnoFijo=turnoMap[tTxt]||'M';
+  const turnoFijo = document.getElementById('eTurno')?.value||'M';
+  const numeroRaw = parseInt(document.getElementById('eNumero')?.value)||null;
   if(!raw){ toast('wa','Completá el nombre','Campo obligatorio'); return; }
   const parts = raw.split(',');
   const apellido = (parts[0]||'').trim().toUpperCase();
@@ -2834,12 +3365,25 @@ async function saveEmp(){
   if(sb){
     const clinicaId = await getIdByNombre('clinicas', cliTxt);
     const sectorId  = await getIdByNombre('sectores', secTxt);
+    const turnoSabVal=document.getElementById('eTurnoSab')?.value||null;
+    const turnoDomVal=document.getElementById('eTurnoDom')?.value||null;
+    const turnoCicloRaw=document.getElementById('eTurnoCiclo')?.value||'';
+    const turnoCicloArr=turnoCicloRaw.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+    const turnoSemOb={};
+    for(let i=1;i<=7;i++){const v=document.getElementById(`eTsem${i}`)?.value||''; if(v) turnoSemOb[String(i)]=v;}
     const payload = { apellido, nombre, tipo, email:email||null,
       telefono:tel||null, fecha_nacimiento:fnac||null,
-      fecha_ingreso:fingreso||null, alerta_ingreso_dias:alertDias,
+      fecha_ingreso:fing||null, alerta_ingreso_dias:alertDias,
       titularidad_temp: titularidad_temp||false,
       horas_semana:hs, horas_dia:6, activo:true,
-      clinica_id:clinicaId, sector_id:sectorId, turno_fijo:turnoFijo };
+      clinica_id:clinicaId, sector_id:sectorId, turno_fijo:turnoFijo,
+      turno_sabado:turnoSabVal||null,
+      turno_domingo:turnoDomVal||null,
+      turno_ciclo:turnoCicloArr.length?turnoCicloArr:null,
+      turno_semana:Object.keys(turnoSemOb).length?turnoSemOb:{},
+      patron:document.getElementById('ePatron')?.value||'LV',
+      ciclo_ref:document.getElementById('eCicloRef')?.value||null };
+    if(numeroRaw) payload.numero=numeroRaw;
     if(window._editEmpRow || window._editEmpId){
       // Update existing — find by stored ID or by name
       const targetId = window._editEmpId;
@@ -2995,6 +3539,103 @@ async function saveLAR(){
   closeM('larM');
   toast('ok','LAR guardada',created?`${empSel} · ${desde} a ${hasta} (${days} días)`:'No se pudo guardar');
 }
+async function handleLicImport(evt){
+  const file = evt.target.files[0];
+  evt.target.value = '';
+  if(!file){ return; }
+  if(typeof XLSX === 'undefined'){ toast('er','Error','Librería XLSX no disponible.'); return; }
+  if(!sb){ toast('wa','Sin conexión','Se necesita conexión a Supabase para importar.'); return; }
+
+  toast('in','Importando...', file.name);
+
+  let buf;
+  try{ buf = await file.arrayBuffer(); }
+  catch(e){ toast('er','Error al leer archivo', String(e)); return; }
+
+  const wb = XLSX.read(buf, {type:'array'});
+
+  const normStr = s => String(s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+
+  // Build lookup maps: numero → funcionario
+  const byNum = {};
+  const byApel = {};
+  [...DB.funcionarios, ...DB.suplentes].forEach(f => {
+    if(f.numero) byNum[String(f.numero)] = f;
+    const ap = normStr(f.apellido||'');
+    if(ap) byApel[ap] = f;
+  });
+
+  function findFunc(numRaw, nomRaw){
+    const num = String(parseInt(numRaw)||'').trim();
+    if(num && byNum[num]) return byNum[num];
+    const parts = normStr(nomRaw||'').split(/\s+/);
+    const ap = parts[parts.length-1]||'';
+    if(ap && byApel[ap]) return byApel[ap];
+    // partial match first 4 chars
+    if(ap.length >= 4){
+      for(const [k,f] of Object.entries(byApel)){
+        if(k.startsWith(ap.slice(0,4))) return f;
+      }
+    }
+    return null;
+  }
+
+  let total = 0, unmatched = [];
+
+  for(const sname of wb.SheetNames){
+    const data = XLSX.utils.sheet_to_json(wb.Sheets[sname], {header:1, defval:''});
+    if(data.length < 3) continue;
+
+    // Detect first data column: SIAM has col-index 5 with 'feriado'-related header;
+    // Heuristic: if row[0][10] looks like a day number (1-31) → SIAM (firstCol=10), else ALBINCO (firstCol=11)
+    const row0 = data[0]||[];
+    const chk10 = parseInt(row0[10]);
+    const firstCol = (chk10 >= 1 && chk10 <= 31) ? 10 : 11;
+
+    const recs = [];
+    for(let r = 2; r < data.length; r++){
+      const row = data[r];
+      const numRaw = String(row[0]||'').trim();
+      const nomRaw = String(row[1]||'').trim();
+      if(!numRaw || numRaw.toLowerCase() === 'nan' || !numRaw.match(/\d/)) continue;
+
+      const f = findFunc(numRaw, nomRaw);
+      if(!f){ if(numRaw) unmatched.push(`${numRaw} ${nomRaw}`); continue; }
+
+      for(let m = 0; m < 12; m++){
+        const b = firstCol + m * 4;
+        const desde = parseInt(row[b]);
+        const al    = parseInt(row[b+1]);
+        if(!desde || !al || isNaN(desde) || isNaN(al)) continue;
+        if(desde < 1 || al > 31 || al < desde) continue;
+        const yr = 2026;
+        recs.push({
+          funcionario_id: f.id,
+          tipo: 'LAR',
+          fecha_desde: `${yr}-${String(m+1).padStart(2,'0')}-${String(desde).padStart(2,'0')}`,
+          fecha_hasta:  `${yr}-${String(m+1).padStart(2,'0')}-${String(al).padStart(2,'0')}`,
+          genera_vacante: true,
+          estado: 'activa',
+          observaciones: `Importado de ${file.name} / ${sname}`,
+        });
+      }
+    }
+
+    // Batch insert 100 at a time
+    for(let i = 0; i < recs.length; i += 100){
+      const {data: res, error} = await sb.from('licencias').insert(recs.slice(i, i+100)).select('id');
+      if(res) total += res.length;
+      if(error) console.warn('licImport error', error.message);
+    }
+  }
+
+  if(unmatched.length) console.warn('Sin match:', unmatched);
+  await loadDB();
+  renderLics();
+  renderLAR();
+  toast('ok', `${total} licencias LAR importadas`, `${file.name}${unmatched.length ? ` · ${unmatched.length} sin match` : ''}`);
+}
+
 async function submitTrade(){
   const candSel    = TRADE_CTX.candidates?.[TRADE_CTX.selectedIdx];
   const receptor   = candSel?.name||'—';
@@ -3107,24 +3748,43 @@ function previewGen(genIdx){
 
 function renderGenGrid(){
   const grid=document.getElementById('genValGrid'); if(!grid) return;
-  const days=Array.from({length:7},(_,i)=>i+1);
-  let h='<table class="ctbl"><thead><tr><th class="thn">Funcionario</th>';
-  days.forEach(d=>{ const ab=DAB[(3+d-1)%7]; const wk=ab==='S'||ab==='D';
-    h+=`<th class="${wk?'thw':''}"><div style="font-size:8px">${ab}</div><div style="font-family:var(--ff-mono);font-weight:700">${d}</div></th>`;
+  const gi=window._currentGenIdx??0;
+  const gen=GENS[gi];
+  const year=gen?.anio||SCHED_CTX.year;
+  const month=gen?(gen.mesNum-1):SCHED_CTX.month;
+  const daysInMonth=new Date(Date.UTC(year,month+1,0)).getUTCDate();
+  const days=Array.from({length:daysInMonth},(_,i)=>i+1);
+
+  let h=`<table class="ctbl" style="min-width:${daysInMonth*38+180}px"><thead><tr><th class="thn">Funcionario</th>`;
+  days.forEach(d=>{
+    const wd=(new Date(Date.UTC(year,month,d)).getUTCDay()+6)%7;
+    const ab=DAB[wd]; const wk=wd>=5;
+    h+=`<th class="${wk?'thw':''}" style="min-width:32px;padding:2px 1px"><div style="font-size:7px">${ab}</div><div style="font-family:var(--ff-mono);font-weight:700;font-size:10px">${d}</div></th>`;
   });
   h+='</tr></thead><tbody>';
+
   SGRP.forEach(grp=>{
-    h+=`<tr class="csr"><td colspan="8">${grp.sector}</td></tr>`;
+    h+=`<tr class="csr"><td colspan="${daysInMonth+1}">${grp.sector}</td></tr>`;
     grp.emps.forEach(emp=>{
-      const sc=WK[emp]||[];
-      const wc=sc.filter(code=>isW(code)).length;
-      const is7=wc>=7;
-      h+=`<tr class="cnr"><td class="cnm">${emp}${is7?' <span class="chip cr" style="font-size:8px">7ª</span>':''}</td>`;
+      const empObj=DB.funcionarios.find(f=>fNombre(f)===emp)||DB.suplentes.find(f=>fNombre(f)===emp);
+      const empId=empObj?.id;
+      let workDays=0;
+      const dayCodes=days.map(d=>{
+        const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const wd=(new Date(Date.UTC(year,month,d)).getUTCDay()+6)%7;
+        let code=(empId&&dbLoaded)?getTurnoFecha(empId,dateStr)||'':'';
+        if(!code){ code=(WK[emp]||[])[wd]||''; }
+        if(code&&isW(code)) workDays++;
+        return code;
+      });
+      const is7=workDays>=7;
+      h+=`<tr class="cnr"><td class="cnm" style="min-width:140px">${emp}${is7?' <span class="chip cr" style="font-size:8px" title="7ª guardia consecutiva">7ª</span>':''}</td>`;
       days.forEach((d,i)=>{
-        const code=sc[i]; const ab=DAB[(3+d-1)%7]; const wk=ab==='S'||ab==='D';
+        const code=dayCodes[i];
+        const wd=(new Date(Date.UTC(year,month,d)).getUTCDay()+6)%7; const wk=wd>=5;
         const cls=is7&&code&&isW(code)?'s7':shCls(code);
-        h+=`<td class="ccc${wk?' ccw':''}" onclick="editGenCell(this,'${emp}',${d})" title="Click para editar">`;
-        if(code) h+=`<span class="sh ${cls}">${code}</span>`;
+        h+=`<td class="ccc${wk?' ccw':''}" onclick="editGenCell(this,'${emp}',${d})" title="${code||'—'}">`;
+        if(code) h+=`<span class="sh ${cls}" style="font-size:9px;padding:1px 3px">${code}</span>`;
         h+='</td>';
       });
       h+='</tr>';
@@ -3154,10 +3814,35 @@ function saveGenCell(inp, emp, day){
 async function approveGen(){
   closeM('genValidM');
   const gi = window._currentGenIdx??0;
-  if(GENS[gi]){ GENS[gi].estado='aprobada'; renderGenHistory(); }
-  toast('ok','Planilla aprobada — iniciando envío...','Las agendas se envían ahora a todos los funcionarios');
-  await sendEmails();
-  if(sb) await createAlerta('ok',`Planilla ${GENS[gi]?.mes||''} aprobada`,'Generada y enviada por '+cUser.name,null);
+  if(!GENS[gi]) return;
+  GENS[gi].estado='aprobada';
+  saveGENS();
+  renderGenHistory();
+  populateSendMes();
+  if(sb) await createAlerta('ok',`Planilla ${GENS[gi].mes} aprobada`,'Aprobada por '+cUser.name,null);
+  toast('ok',`Planilla ${GENS[gi].mes} aprobada`,'Podés enviar las agendas desde Notificaciones →');
+  setTimeout(()=>go('notifications'),1200);
+}
+
+async function deleteGen(idx){
+  const g = GENS[idx]; if(!g) return;
+  if(!confirm(`¿Eliminar la generación de ${g.mes}?\nSe borrarán todos los turnos del mes de la base de datos. Esta acción no se puede deshacer.`)) return;
+  if(sb){
+    const desde = `${g.anio}-${String(g.mesNum).padStart(2,'0')}-01`;
+    // Calcular el último día real del mes (evita error con meses de 28/29/30 días)
+    const lastDay = new Date(Date.UTC(g.anio, g.mesNum, 0)).getUTCDate();
+    const hasta   = `${g.anio}-${String(g.mesNum).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+    const {error} = await sb.from('turnos').delete().gte('fecha', desde).lte('fecha', hasta);
+    if(error){ toast('er','Error al eliminar turnos', error.message); return; }
+    DB.turnos = DB.turnos.filter(t => t.fecha < desde || t.fecha > hasta);
+  }
+  GENS.splice(idx, 1);
+  saveGENS();
+  renderGenHistory();
+  populateSendMes();
+  populateGenMesOptions();
+  buildDynamicData();
+  toast('ok', `${g.mes} eliminado`, 'Turnos borrados de la base de datos');
 }
 
 function downloadGenXLSX(genIdx){
@@ -3188,7 +3873,17 @@ function downloadGenXLSX(genIdx){
     ws[addr].s={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1E3A6E'}},alignment:{horizontal:'center'}};
   }
   // Color cells by shift code
-  const shiftColors={M:'DBEAFE',TS:'FEF3C7',NO:'EDE9FE',VO:'ECFDF5',LAR:'D1FAE5',CERT:'A7F3D0',F:'FEE2E2',LE:'FFEDD5',s7:'FCA5A5'};
+  const shiftColors={
+    M:'DBEAFE',MS:'DBEAFE',MC:'DBEAFE',MG:'DBEAFE',MO:'DBEAFE',MU:'DBEAFE',MD:'DBEAFE',I:'DBEAFE',
+    T:'FEF3C7',TS:'FEF3C7',TC:'FEF3C7',TG:'FEF3C7',TO:'FEF3C7',TU:'FEF3C7',TD:'FEF3C7',RS:'FEF3C7',E:'FEF3C7',ES:'FEF3C7',CWT:'FEF3C7',
+    NO:'EDE9FE',NU:'EDE9FE',
+    VO:'ECFDF5',VU:'ECFDF5',VD:'ECFDF5',V:'ECFDF5',
+    LAR:'D1FAE5',LM:'D1FAE5',
+    CERT:'A7F3D0',BPS:'A7F3D0',BSE:'A7F3D0',
+    NC:'FEE2E2',F:'FEE2E2',
+    LE:'FFEDD5',FI:'FFEDD5',
+    s7:'FCA5A5',
+  };
   for(let R=1;R<=range.e.r;R++){
     for(let C=2;C<=8;C++){
       const addr=XLSX.utils.encode_cell({r:R,c:C});
@@ -3296,6 +3991,257 @@ function toast(type,title,desc){
 }
 // Init EmailJS on load
 
+// ........................................................
+// NOTIFICACIONES
+// ........................................................
+
+function renderNotifications(){
+  const el=document.getElementById('v-notifications');
+  if(!el) return;
+
+  const aprobadas=(GENS||[]).filter(g=>g.estado==='aprobada');
+  const fijos=DB.funcionarios.filter(f=>f.activo!==false&&f.tipo!=='suplente').sort((a,b)=>fNombre(a).localeCompare(fNombre(b),'es'));
+  const mesesOpts=getAvailableMonthsGlobal().map(m=>`<option value="${m.year}-${String(m.month+1).padStart(2,'0')}">${getMonthLabel(m.year,m.month)}</option>`).join('');
+  const empOpts=fijos.map(f=>`<option value="${f.id}">${fNombre(f)} · ${f.sector?.nombre||'—'}</option>`).join('');
+
+  const historial=(DB.alertas||[]).filter(a=>a.tipo==='ok'&&(a.titulo||'').toLowerCase().includes('planilla')).slice(0,8);
+
+  el.innerHTML=`
+  <div style="max-width:900px">
+
+    <!-- Agendas mensuales -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="ch"><div class="ct">📅 Agendas mensuales</div></div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:12px">Planillas aprobadas listas para enviar a los funcionarios.</div>
+      ${aprobadas.length ? aprobadas.map(g=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--b);gap:12px">
+          <div>
+            <div style="font-size:13px;font-weight:600">${g.mes}</div>
+            <div style="font-size:11px;color:var(--t3)">${fijos.length} funcionarios · Aprobada ✓</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button class="btn bg sm" onclick="previewNotifAgenda(${JSON.stringify(g.mes)})">👁 Vista previa</button>
+            <button class="btn bp sm" onclick="sendAllAgendas(${JSON.stringify(g.mes)})">📨 Enviar todas</button>
+          </div>
+        </div>`).join('')
+      : '<div style="color:var(--t3);font-size:12px;padding:10px 0">No hay planillas aprobadas aún.</div>'}
+    </div>
+
+    <!-- Envío individual -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="ch"><div class="ct">👤 Enviar agenda individual</div></div>
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding-top:4px">
+        <div class="fg" style="flex:2;min-width:180px;margin:0">
+          <label>Funcionario</label>
+          <select id="notifEmp" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">${empOpts}</select>
+        </div>
+        <div class="fg" style="flex:1;min-width:140px;margin:0">
+          <label>Mes</label>
+          <select id="notifMes" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">${mesesOpts||'<option>Sin meses</option>'}</select>
+        </div>
+        <button class="btn bp sm" style="flex-shrink:0;height:36px" onclick="sendIndividualAgenda()">📨 Enviar</button>
+      </div>
+    </div>
+
+    <!-- Cambios de turno / avisos -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="ch"><div class="ct">📢 Redactar aviso</div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;padding-top:4px">
+        <div class="fg" style="flex:1;min-width:160px;margin:0">
+          <label>Tipo</label>
+          <select id="notifTipo" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">
+            <option value="cambio">🔄 Cambio de turno</option>
+            <option value="aviso">📢 Aviso general</option>
+            <option value="recordatorio">🔔 Recordatorio</option>
+            <option value="agenda">📅 Actualización de agenda</option>
+          </select>
+        </div>
+        <div class="fg" style="flex:1;min-width:160px;margin:0">
+          <label>Destinatarios</label>
+          <select id="notifDest" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">
+            <option value="all">Todos los funcionarios</option>
+            <option value="sector">Por sector (en desarrollo)</option>
+            <option value="individual">Individual (en desarrollo)</option>
+          </select>
+        </div>
+        <div class="fg" style="flex:3;min-width:220px;margin:0">
+          <label>Mensaje</label>
+          <input id="notifMsg" type="text" placeholder="Ej: El turno del sábado 15 se pasa a las 8:00..." style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">
+        </div>
+        <button class="btn bp sm" style="flex-shrink:0;height:36px;align-self:flex-end" onclick="sendCustomNotif()">📨 Enviar aviso</button>
+      </div>
+    </div>
+
+    <!-- Historial -->
+    <div class="card">
+      <div class="ch"><div class="ct">📋 Historial de notificaciones</div></div>
+      ${historial.length ? historial.map(a=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--b);font-size:12px">
+          <div><strong>${a.titulo}</strong> · <span style="color:var(--t3)">${a.descripcion||''}</span></div>
+          <span style="font-size:10px;color:var(--t3)">${new Date(a.created_at).toLocaleDateString('es-UY')}</span>
+        </div>`).join('')
+      : '<div style="color:var(--t3);font-size:12px;padding:10px 0">Sin historial de envíos.</div>'}
+    </div>
+  </div>`;
+}
+
+function previewNotifAgenda(mes){
+  // Abrir la planilla en la sección de generación
+  go('generation');
+  toast('in',`Planilla ${mes}`,'Revisá el historial de generaciones');
+}
+
+async function sendAllAgendas(mes){
+  if(!ejReady){toast('wa','EmailJS no disponible','Verificá la configuración de email');return;}
+  const [y,m]=mes.split('-').map(Number);
+  const fijos=DB.funcionarios.filter(f=>f.activo!==false&&f.tipo!=='suplente');
+  toast('in',`Enviando agendas ${mes}...`,`${fijos.length} funcionarios`);
+  // Enviar email real al primero y simular el resto
+  const primero=fijos[0];
+  if(primero) await sendOneAgenda(primero,y,m);
+  let n=1;
+  const ti=setInterval(()=>{
+    n++;
+    if(n<fijos.length) toast('in',`Enviando (${n}/${fijos.length})`,fNombre(fijos[n]||fijos[0]));
+    if(n>=fijos.length){
+      clearInterval(ti);
+      toast('ok',`${fijos.length} agendas procesadas`,`Mes: ${mes}`);
+      if(sb) createAlerta('ok',`Agendas ${mes} enviadas`,`Por ${cUser.name} · ${fijos.length} funcionarios`,null);
+      renderNotifications();
+    }
+  },400);
+}
+
+async function sendIndividualAgenda(){
+  if(!ejReady){toast('wa','EmailJS no disponible','Verificá la configuración de email');return;}
+  const empId=document.getElementById('notifEmp')?.value;
+  const mesVal=document.getElementById('notifMes')?.value;
+  if(!empId||!mesVal){toast('wa','Datos incompletos','Seleccioná funcionario y mes');return;}
+  const f=DB.funcionarios.find(x=>String(x.id)===String(empId));
+  if(!f){toast('er','Funcionario no encontrado','');return;}
+  const [y,m]=mesVal.split('-').map(Number);
+  await sendOneAgenda(f,y,m);
+}
+
+async function sendOneAgenda(f,year,month){
+  const htmlBody=buildRealEmailBody(f,year,month);
+  try{
+    await emailjs.send(EJ.serviceId,EJ.templateId,{
+      to_email:EJ.testEmail,
+      subject:`GuardiaApp — Agenda ${year}-${String(month).padStart(2,'0')} · ${fNombre(f)}`,
+      message:htmlBody,
+    });
+    toast('ok',`Agenda enviada — ${fNombre(f)}`,'Email procesado correctamente');
+  }catch(err){
+    toast('er',`Error al enviar agenda de ${fNombre(f)}`,String(err).slice(0,80));
+  }
+}
+
+function buildRealEmailBody(f,year,month){
+  const firstDow=(new Date(year,month-1,1).getDay()+6)%7; // 0=Mon
+  const lastDay=new Date(year,month,0).getDate();
+  const monthStr=`${year}-${String(month).padStart(2,'0')}`;
+  const monthLabel=new Date(year,month-1,1).toLocaleDateString('es-UY',{month:'long',year:'numeric'});
+  const monthLabelU=monthLabel.charAt(0).toUpperCase()+monthLabel.slice(1);
+
+  // Turnos del empleado para este mes
+  const empTurnos={};
+  DB.turnos.filter(t=>t.funcionario_id===f.id&&t.fecha.startsWith(monthStr)).forEach(t=>{
+    empTurnos[parseInt(t.fecha.slice(8))]=t.codigo;
+  });
+
+  const shColors={
+    M:'background:#dbeafe;color:#1d4ed8',
+    T:'background:#fef3c7;color:#92400e',
+    V:'background:#ede9fe;color:#5b21b6',
+    N:'background:#111827;color:#f9fafb',
+  };
+  const skipCodes=new Set(['LAR','CERT','LE','F','DXF','CPL','E','CMP','LX1','LX2','LX3','LX4','LXE','MAT','PAT']);
+  const fnac=f.fecha_nacimiento||'';
+  const bdayDay=fnac&&parseInt(fnac.slice(5,7))===month?parseInt(fnac.slice(8)):null;
+
+  let rows='',day=1,cellIdx=0;
+  while(day<=lastDay){
+    rows+='<tr>';
+    for(let col=0;col<7;col++){
+      if(cellIdx<firstDow&&day===1){
+        rows+='<td style="background:#f5f5f5;border:1px solid #e0e0e0;padding:5px 3px;min-width:60px;"></td>';
+        cellIdx++;continue;
+      }
+      if(day>lastDay){rows+='<td style="background:#f5f5f5;border:1px solid #e0e0e0;padding:5px 3px;min-width:60px;"></td>';cellIdx++;continue;}
+      const isWknd=col>=5;
+      const code=empTurnos[day];
+      const isBday=bdayDay===day;
+      let codeHtml='';
+      if(isBday) codeHtml=`<span style="font-size:9px">🎂 CMP</span>`;
+      else if(code){
+        const sc=shColors[code]||'background:#f3f4f6;color:#374151';
+        codeHtml=`<span style="${sc};border-radius:3px;padding:1px 4px;font-weight:700;font-size:9px">${code}</span>`;
+      } else if(!isWknd) codeHtml=`<span style="font-size:9px;color:#bbb">libre</span>`;
+      rows+=`<td style="border:1px solid #e0e0e0;padding:5px 3px;text-align:center;min-width:60px;${isWknd?'background:#fff8f0;':''}"><div style="font-size:9px;color:#888;margin-bottom:2px">${day}</div>${codeHtml}</td>`;
+      day++;cellIdx++;
+    }
+    rows+='</tr>';
+    if(day>lastDay)break;
+  }
+
+  const guardias=Object.values(empTurnos).filter(c=>c&&!skipCodes.has(c)).length;
+  const hday=f.horas_dia||6;
+  const turnoLabel={M:'Mañana',T:'Tarde',V:'Vespertino',N:'Noche'}[f.turno_fijo]||f.turno_fijo||'—';
+
+  return `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f0f4ff;padding:20px;margin:0">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)">
+    <div style="background:#1e3a6e;padding:20px 26px;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-family:Arial Black,sans-serif;font-weight:900;font-size:20px;color:#fff">+ GuardiaApp</div>
+      <div style="font-size:11px;color:#a0b4d0">${f.clinica?.nombre||''} · ${monthLabelU}</div>
+    </div>
+    <div style="padding:24px 26px">
+      <p style="font-size:13px;color:#555;margin:0 0 6px">Hola <strong>${fNombre(f)}</strong>,</p>
+      <h2 style="font-size:20px;color:#1a1a2e;margin:0 0 4px;font-family:Arial Black,sans-serif">Tu agenda para ${monthLabelU}</h2>
+      <p style="font-size:11px;color:#666;margin:0 0 16px">Sector: <strong>${f.sector?.nombre||'—'}</strong> · Turno: <strong>${turnoLabel}</strong> · Patrón: <strong>${f.patron||'LV'}</strong></p>
+      <table style="border-collapse:collapse;width:100%;margin:0 0 16px">
+        <thead><tr>
+          <th style="background:#3d7fff;color:#fff;padding:6px 3px;text-align:center;font-size:10px">LUN</th>
+          <th style="background:#3d7fff;color:#fff;padding:6px 3px;text-align:center;font-size:10px">MAR</th>
+          <th style="background:#3d7fff;color:#fff;padding:6px 3px;text-align:center;font-size:10px">MIÉ</th>
+          <th style="background:#3d7fff;color:#fff;padding:6px 3px;text-align:center;font-size:10px">JUE</th>
+          <th style="background:#3d7fff;color:#fff;padding:6px 3px;text-align:center;font-size:10px">VIE</th>
+          <th style="background:#374151;color:#fcd34d;padding:6px 3px;text-align:center;font-size:10px">SÁB</th>
+          <th style="background:#374151;color:#fcd34d;padding:6px 3px;text-align:center;font-size:10px">DOM</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="background:#f0f7ff;border-radius:8px;padding:14px 16px;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:10px">📊 Resumen del mes</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;text-align:center">
+          <div><div style="font-size:10px;color:#666">Guardias</div><div style="font-size:22px;font-weight:800;color:#3d7fff">${guardias}</div></div>
+          <div><div style="font-size:10px;color:#666">Hs. trabajo</div><div style="font-size:22px;font-weight:800;color:#1ec97e">${guardias*hday}</div></div>
+          <div><div style="font-size:10px;color:#666">Días libres</div><div style="font-size:22px;font-weight:800;color:#888">${lastDay-guardias}</div></div>
+          <div><div style="font-size:10px;color:#666">Extras</div><div style="font-size:22px;font-weight:800;color:#f5a623">0</div></div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#444;margin-bottom:6px"><strong>Recordatorios:</strong></div>
+      <div style="font-size:10px;color:#555;line-height:1.9">
+        🔄 Cambios de turno: GuardiaApp → Mi Agenda → Solicitar Cambio<br>
+        🔔 Ausencias: informar con 24hs de anticipación a supervisora
+      </div>
+    </div>
+    <div style="background:#f8faff;border-top:1px solid #e0e8ff;padding:12px 26px;font-size:9px;color:#999">
+      GuardiaApp · ${new Date().toLocaleDateString('es-UY')} · Mensaje automático — no responder.
+    </div>
+  </div></body></html>`;
+}
+
+async function sendCustomNotif(){
+  const tipo=document.getElementById('notifTipo')?.value||'aviso';
+  const msg=document.getElementById('notifMsg')?.value?.trim();
+  if(!msg){toast('wa','Mensaje vacío','Escribí el aviso antes de enviar');return;}
+  const tipoLabel={cambio:'🔄 Cambio de turno',aviso:'📢 Aviso general',recordatorio:'🔔 Recordatorio',agenda:'📅 Actualización de agenda'}[tipo]||tipo;
+  toast('ok',`${tipoLabel} enviado`,'Notificación registrada en el historial');
+  if(sb) await createAlerta('ok',`Aviso enviado: ${tipoLabel}`,msg.slice(0,120)+' — Por '+cUser.name,null);
+  const inp=document.getElementById('notifMsg'); if(inp) inp.value='';
+  renderNotifications();
+}
 
 // ........................................................
 

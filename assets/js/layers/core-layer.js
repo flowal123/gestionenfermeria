@@ -21,10 +21,9 @@ const ROLES={
   nurse:    {label:'Enfermería',icon:'👩‍⚕️',chip:'cp'},
 };
 const PERMS={
-  admin:    ['dashboard','schedule','mySchedule','employees','licenses','trades','alerts','generation','hrReport','users'],
-  supervisor:['dashboard','schedule','mySchedule','employees','licenses','trades','alerts','generation','hrReport'],
+  admin:    ['dashboard','schedule','mySchedule','employees','licenses','trades','alerts','generation','notifications','hrReport','users'],
+  supervisor:['dashboard','schedule','mySchedule','employees','licenses','trades','alerts','generation','notifications','hrReport'],
   nurse:    ['mySchedule','trades','alerts'],
-
 };
 const DEMO={
   admin:    {name:'Admin Sistema',email:'admin@guardiapp.com',initials:'AD',sector:'—',clinic:'Todas'},
@@ -175,7 +174,7 @@ const MYSCHED={
 const LS_SHIFTS_LE=new Set(['M','MS','MC','MG','MU','MD','T','TS','TC','TG','TU','TD','RS']);
 
 const DAB='LMMJVSD';
-const WK_CODES=new Set(['M','MS','MC','MG','MO','MU','MD','T','TS','TC','TG','TO','TU','TD','RS','NO','NU','VO','VU','VD','CPB','GINE','AXO','H','AP','U1','U2','DOM','PSR','O','CG','CWM']);
+const WK_CODES=new Set(['M','MS','MC','MG','MO','MU','MD','T','TS','TC','TG','TO','TU','TD','RS','NO','NU','VO','VU','VD','CPB','GINE','AXO','H','AP','U1','U2','DOM','PSR','O','CG','CWM','E','V','NC','I','ES','CWT','FI','BSE','BPS','LM','CMP']);
 
 // ........................................................
 // UTILS
@@ -189,16 +188,18 @@ let cRole='nurse', cUser=null, cWeek=0, cSF='all';
 function shCls(code){
   if(!code) return '';
   const c=code.toUpperCase();
-  if(['M','MS','MC','MG','MO','MU','MD','PSR'].includes(c)) return 'sM';
-  if(['T','TS','TC','TG','TO','TU','TD','RS','O'].includes(c)) return 'sT';
+  if(['M','MS','MC','MG','MO','MU','MD','PSR','I'].includes(c)) return 'sM';
+  if(['T','TS','TC','TG','TO','TU','TD','RS','O','E','ES','CWT'].includes(c)) return 'sT';
   if(['NO','NU'].includes(c)) return 'sN';
-  if(['VO','VU','VD'].includes(c)) return 'sV';
+  if(['VO','VU','VD','V'].includes(c)) return 'sV';
   if(c==='LAR') return 'sLAR';
-  if(c==='CERT') return 'sCERT';
+  if(['CERT','BPS','BSE','LM'].includes(c)) return 'sCERT';
   if(['MAT','PAT'].includes(c)) return 'sCERT';
   if(c==='F') return 'sF';
   if(c==='LXC') return 'sLXC';
-  if(['LE','LXE','LX1','LX3','Lx3','DXF','E'].includes(c)||c.startsWith('LX')||c.startsWith('Lx')) return 'sLE';
+  if(c==='NC') return 'sNC';
+  if(c==='CMP') return 'sCMP';
+  if(['FI','LE','LXE','LX1','LX3','Lx3','DXF'].includes(c)||c.startsWith('LX')||c.startsWith('Lx')) return 'sLE';
   if(['CPB','GINE','AXO','H','AP','DOM'].includes(c)) return 'sCPB';
   return 'sX';
 }
@@ -300,7 +301,7 @@ function applyPerms(){
 // ........................................................
 // NAVIGATION
 // ........................................................
-const PTITLES={dashboard:'Dashboard General',schedule:'Planificación Mensual',mySchedule:'Mi Agenda Personal',employees:'Gestión de Funcionarios',licenses:'Licencias y Ausencias',trades:'Cambios de Turno',alerts:'Centro de Alertas',generation:'Generación Automática',hrReport:'Reporte RRHH',users:'Usuarios y Permisos'};
+const PTITLES={dashboard:'Dashboard General',schedule:'Planificación Mensual',mySchedule:'Mi Agenda Personal',employees:'Gestión de Funcionarios',licenses:'Licencias y Ausencias',trades:'Cambios de Turno',alerts:'Centro de Alertas',generation:'Generación Automática',notifications:'Notificaciones',hrReport:'Reporte RRHH',users:'Usuarios y Permisos'};
 
 function go(id){
   if(!PERMS[cRole].includes(id)){toast('wa','Acceso restringido','Sin permiso para esta sección.');return;}
@@ -320,6 +321,7 @@ function go(id){
   if(id==='trades')      renderTrades();
   if(id==='alerts')      renderAlerts();
   if(id==='generation')  { renderGenHistory(); populateSendMes(); }
+  if(id==='notifications') renderNotifications();
   if(id==='hrReport')    renderHR();
   if(id==='users')       renderUsers();
   populateSels();
