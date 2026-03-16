@@ -905,7 +905,9 @@ function renderEmps(){
   const skip=new Set(['LAR','CERT','LE','F','DXF','CPL','E','LX1','LX2','LX3','LX4','LXE','MAT','PAT']);
   const stSel=document.getElementById('empStatusSel');
   const stVal=stSel?.value||'active';
-  const source = dbLoaded ? (DB.funcionariosAll?.length?DB.funcionariosAll:DB.funcionarios) : [];
+  // Fijos + suplentes con titularidad momentánea
+  const titulares = dbLoaded ? (DB.suplentesAll||DB.suplentes||[]).filter(s=>s.titularidad_temp) : [];
+  const source = dbLoaded ? [...(DB.funcionariosAll?.length?DB.funcionariosAll:DB.funcionarios), ...titulares] : [];
   const filtered = dbLoaded ? source.filter(f=>stVal==='all' ? true : stVal==='inactive' ? f.activo===false : f.activo!==false) : [];
   if(!dbLoaded||!source.length){
     body.innerHTML='<tr><td colspan="12" style="color:var(--t3);padding:20px;text-align:center">'+(dbLoaded?'Sin funcionarios en BD':'Conectando con base de datos...')+'</td></tr>';
@@ -925,8 +927,11 @@ function renderEmps(){
     const actBtn = f.activo===false
       ? `<button class="btn bs xs" onclick="restoreEmpByName(decodeURIComponent('${encodeURIComponent(nm)}'))">↩</button>`
       : `<button class="btn bd xs" onclick="deleteEmpByName(decodeURIComponent('${encodeURIComponent(nm)}'))">🗑</button>`;
+    const titChip = f.titularidad_temp
+      ? `<span class="chip ca" style="font-size:9px;margin-left:4px" title="Suplente con titularidad momentánea">TITULAR</span>`
+      : '';
     return `<tr>
-      <td><strong>${nm}</strong></td>
+      <td><strong>${nm}</strong>${titChip}</td>
       <td style="font-size:11px">${f.clinica?.nombre||'—'}</td>
       <td style="font-size:11px">${f.sector?.nombre||'—'}</td>
       <td><span class="chip cn" style="font-size:10px">${f.turno_fijo||'—'}</span></td>
@@ -953,7 +958,12 @@ function renderSubs2(){
   const rows = dbLoaded
     ? sourceFiltered.map((s,i)=>({
         name:fNombre(s), sen:s.antiguedad||1, pct:s.cumplimiento||80, comp:s.competencias||[],
-        g:DB.turnos.filter(t=>t.funcionario_id===s.id&&isW(t.codigo)).length, status:s.activo===false?'inactive':'available', idx:i
+        g:DB.turnos.filter(t=>t.funcionario_id===s.id&&isW(t.codigo)).length,
+        status:s.activo===false?'inactive':'available',
+        titularidad_temp: !!s.titularidad_temp,
+        sector_temp: s.sector?.nombre||'',
+        disponibilidad: s.disponibilidad||'',
+        idx:i
       }))
     : SUBS.map((s,i)=>({...s,idx:i}));
   body.innerHTML=rows.map((s,i)=>{
@@ -961,14 +971,22 @@ function renderSubs2(){
     const actBtn = s.status==='inactive'
       ? `<button class="btn bs xs" onclick="restoreEmpByName(decodeURIComponent('${encodeURIComponent(s.name)}'))">↩</button>`
       : `<button class="btn bd xs" onclick="deleteEmpByName(decodeURIComponent('${encodeURIComponent(s.name)}'))">🗑</button>`;
+    const titChip = s.titularidad_temp
+      ? `<span class="chip ca" style="font-size:9px;margin-left:4px" title="Sector: ${s.sector_temp}">TITULAR ${s.sector_temp?'· '+s.sector_temp:''}</span>`
+      : '';
+    const dispChip = s.disponibilidad
+      ? `<span class="chip cb2" style="font-size:9px">${s.disponibilidad}</span>`
+      : '';
+    const stLabel = s.titularidad_temp ? 'Con titularidad' : s.status==='inactive' ? 'Inactivo' : s.status==='available' ? 'Disponible' : 'En turno';
+    const stCls   = s.titularidad_temp ? 'ca' : s.status==='inactive' ? 'cn' : s.status==='available' ? 'cg' : 'ca';
     return `<tr>
-      <td><strong>${s.name}</strong></td>
-      <td class="mn">${s.sen} años</td>
+      <td><strong>${s.name}</strong>${titChip}</td>
+      <td class="mn">${s.sen} año${s.sen!==1?'s':''}</td>
       <td><span class="chip ${pc}">${s.pct}%</span></td>
-      <td>${s.comp.map(c=>`<span class="chip cb2" style="margin:1px">${c}</span>`).join('')}</td>
+      <td>${s.comp.map(c=>`<span class="chip cb2" style="margin:1px">${c}</span>`).join('')||dispChip}</td>
       <td class="mn">${s.g}</td>
       <td class="mn" style="color:var(--blue)">${s.g*6}hs</td>
-      <td><span class="chip ${s.status==='inactive'?'cn':(s.status==='available'?'cg':'ca')}">${s.status==='inactive'?'Inactivo':(s.status==='available'?'Disponible':'En turno')}</span></td>
+      <td><span class="chip ${stCls}">${stLabel}</span></td>
       <td><span class="chip ${i===0?'cg':i===1?'ca':'cr'}">${i+1}° Prioridad</span></td>
       <td><div style="display:flex;gap:4px">
         <button class="btn bg xs" onclick="editEmpByName(decodeURIComponent('${encodeURIComponent(s.name)}'))">✏️</button>
@@ -2748,16 +2766,35 @@ async function restoreEmpByName(name){
   toast('ok','Funcionario reactivado',name);
 }
 
+function toggleTitularidad(checked){
+  const box=document.getElementById('eTitSectorBox');
+  if(box) box.style.display=checked?'block':'none';
+}
+
+function onEmpTipoChange(){
+  const tipo=document.getElementById('eTipo')?.value||'';
+  const titBox=document.getElementById('eTitBox');
+  if(titBox) titBox.style.display=(tipo==='Suplente')?'block':'none';
+  if(tipo!=='Suplente'){
+    const chk=document.getElementById('eTitular'); if(chk) chk.checked=false;
+    toggleTitularidad(false);
+  }
+}
+
 function resetAndOpenEmpModal(tipoDefault='fijo'){
   window._editEmpRow=null;
   window._editEmpId=null;
   document.querySelector('#empM .mh-t').textContent='＋ Nuevo Funcionario';
-  ['eApNom','eEmail','eTel','eFnac'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['eApNom','eEmail','eTel','eFnac','eFingreso'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   const hsEl=document.getElementById('eHs'); if(hsEl) hsEl.value='36';
+  const adEl=document.getElementById('eAlertDias'); if(adEl) adEl.value='45';
   // Reset selects to first option
   ['eTipo','eCli','eSec','eTurno'].forEach(id=>{ const el=document.getElementById(id); if(el) el.selectedIndex=0; });
+  const chk=document.getElementById('eTitular'); if(chk) chk.checked=false;
+  toggleTitularidad(false);
   const t=document.getElementById('eTipo');
   if(t) t.value=(String(tipoDefault).toLowerCase()==='suplente'?'Suplente':'Fijo');
+  onEmpTipoChange();
   openM('empM');
 }
 
@@ -2777,11 +2814,16 @@ async function saveEmp(){
   const raw  = document.getElementById('eApNom')?.value.trim();
   const email= document.getElementById('eEmail')?.value.trim();
   const tel  = document.getElementById('eTel')?.value.trim();
-  const fnac = document.getElementById('eFnac')?.value;
-  const hs   = parseInt(document.getElementById('eHs')?.value)||36;
+  const fnac      = document.getElementById('eFnac')?.value;
+  const fingreso  = document.getElementById('eFingreso')?.value||null;
+  const alertDias = parseInt(document.getElementById('eAlertDias')?.value)||45;
+  const hs        = parseInt(document.getElementById('eHs')?.value)||36;
   const tipo = document.getElementById('eTipo')?.value==='Fijo'?'fijo':'suplente';
+  const titularidad_temp = tipo==='suplente' && !!(document.getElementById('eTitular')?.checked);
   const cliTxt = document.getElementById('eCli')?.value||'';
-  const secTxt = document.getElementById('eSec')?.value||'';
+  const secTxt = titularidad_temp
+    ? (document.getElementById('eTitSector')?.value||document.getElementById('eSec')?.value||'')
+    : (document.getElementById('eSec')?.value||'');
   const tTxt = document.getElementById('eTurno')?.value||'Mañana';
   const turnoMap={'Mañana':'M','Tarde':'TS','Noche':'NO','Rotativo':'ROT'};
   const turnoFijo=turnoMap[tTxt]||'M';
@@ -2794,6 +2836,8 @@ async function saveEmp(){
     const sectorId  = await getIdByNombre('sectores', secTxt);
     const payload = { apellido, nombre, tipo, email:email||null,
       telefono:tel||null, fecha_nacimiento:fnac||null,
+      fecha_ingreso:fingreso||null, alerta_ingreso_dias:alertDias,
+      titularidad_temp: titularidad_temp||false,
       horas_semana:hs, horas_dia:6, activo:true,
       clinica_id:clinicaId, sector_id:sectorId, turno_fijo:turnoFijo };
     if(window._editEmpRow || window._editEmpId){

@@ -444,10 +444,26 @@
 <div class="ov" id="empM"><div class="modal">
   <div class="mh"><div class="mh-t">👩‍⚕️ Nuevo Funcionario</div><button class="mh-x" onclick="closeM('empM')">✕</button></div>
   <div class="mb">
-    <div class="fr"><div class="fg"><label>Apellido, Nombre</label><input id="eApNom" type="text" placeholder="GARCIA, Rosa"></div><div class="fg"><label>Tipo</label><select id="eTipo"><option>Fijo</option><option>Suplente</option></select></div></div>
+    <div class="fr"><div class="fg"><label>Apellido, Nombre</label><input id="eApNom" type="text" placeholder="GARCIA, Rosa"></div><div class="fg"><label>Tipo</label><select id="eTipo" onchange="onEmpTipoChange()"><option>Fijo</option><option>Suplente</option></select></div></div>
     <div class="fr"><div class="fg"><label>Clínica</label><select id="eCli"><option>Setiembre</option><option>Carrasco</option><option>Golf</option><option>Maldonado</option></select></div><div class="fg"><label>Sector</label><select id="eSec"><option>POLI MAÑANA</option><option>POLI TARDE</option><option>OBSERVACIÓN</option><option>AMNP</option><option>CPB</option><option>ECONOMATO</option><option>GINE SET</option></select></div></div>
     <div class="fr"><div class="fg"><label>Turno Fijo</label><select id="eTurno"><option>Mañana</option><option>Tarde</option><option>Noche</option><option>Rotativo</option></select></div><div class="fg"><label>Hs./semana</label><input id="eHs" type="number" value="36"></div></div>
+    <div id="eTitBox" style="display:none;background:var(--adim);border:1px solid rgba(245,166,35,.3);border-radius:var(--r);padding:11px;margin-bottom:4px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <input type="checkbox" id="eTitular" onchange="toggleTitularidad(this.checked)" style="width:15px;height:15px;cursor:pointer">
+        <label for="eTitular" style="font-size:12px;font-weight:600;color:var(--amber);cursor:pointer">Titularidad momentánea (interinato)</label>
+      </div>
+      <div id="eTitSectorBox" style="display:none">
+        <label style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.6px">Sector asignado temporalmente</label>
+        <select id="eTitSector" style="width:100%;background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px 11px;border-radius:var(--r);font-size:12px;margin-top:4px">
+          <option value="">Seleccionar sector...</option>
+          <option>POLI MAÑANA</option><option>POLI TARDE</option><option>OBSERVACIÓN</option>
+          <option>AMNP</option><option>CPB</option><option>ECONOMATO</option>
+          <option>PROGRAMAS</option><option>GINE SET</option><option>TISANERÍA</option><option>BQ</option>
+        </select>
+      </div>
+    </div>
     <div class="fr"><div class="fg"><label>Fecha de Nacimiento</label><input id="eFnac" type="date" placeholder="DD/MM/AAAA"></div><div class="fg"><label>Teléfono / WhatsApp</label><input id="eTel" type="tel" placeholder="+598 9X XXX XXX"></div></div>
+    <div class="fr"><div class="fg"><label>Fecha de Ingreso</label><input id="eFingreso" type="date" placeholder="DD/MM/AAAA"></div><div class="fg"><label>Alerta supervisora (días)</label><input id="eAlertDias" type="number" value="45" min="1" max="365" placeholder="45 = 1.5 meses"></div></div>
     <div class="fg"><label>Email</label><input id="eEmail" type="email" placeholder="nombre@clinica.com"></div>
   </div>
   <div class="mf"><button class="btn bg" onclick="closeM('empM')">Cancelar</button><button class="btn bp" onclick="saveEmp()">💾 Guardar</button></div>

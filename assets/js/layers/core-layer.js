@@ -52,15 +52,15 @@ const EMPS=[
   {name:'M. PEREIRA',     clinic:'Setiembre',sector:'OBSERVACIÓN', shift:'ROT', hday:6,status:'active',g:24,extras:12,faltas:0},
   {name:'G. SANTA CRUZ',  clinic:'Setiembre',sector:'OBSERVACIÓN', shift:'VO',  hday:6,status:'active',g:20,extras:0,faltas:0},
   {name:'M. ISLAS',       clinic:'Setiembre',sector:'OBSERVACIÓN', shift:'NO',  hday:6,status:'active',g:22,extras:0,faltas:0},
-  {name:'F. RODRIGUEZ',   clinic:'Setiembre',sector:'AMNP',        shift:'MU',  hday:6,status:'active',g:22,extras:0,faltas:0},
+  {name:'F. RODRIGUEZ',   clinic:'Setiembre',sector:'AMNP',        shift:'MU',  hday:6,status:'active',g:22,extras:0,faltas:0, regime:'4x1'},
   {name:'L. MAGLIANO',    clinic:'Setiembre',sector:'AMNP',        shift:'TU',  hday:6,status:'active',g:22,extras:0,faltas:0},
   {name:'D. TITO',        clinic:'Setiembre',sector:'AMNP',        shift:'ROT', hday:6,status:'active',g:25,extras:6, faltas:0},
   {name:'N. TERAN',       clinic:'Setiembre',sector:'AMNP',        shift:'VU',  hday:6,status:'active',g:21,extras:0,faltas:0},
   {name:'L. FAGUNDEZ',    clinic:'Setiembre',sector:'ECONOMATO',   shift:'T',   hday:6,status:'absent',g:20,extras:0,faltas:1},
   {name:'J. BOLON',       clinic:'Setiembre',sector:'ECONOMATO',   shift:'M',   hday:6,status:'active',g:22,extras:0,faltas:0},
   {name:'F. CANTERO',     clinic:'Setiembre',sector:'ECONOMATO',   shift:'LAR', hday:6,status:'lar',   g:0, extras:0,faltas:0},
-  {name:'L. PRIEU',       clinic:'Setiembre',sector:'PROGRAMAS',   shift:'M/T', hday:6,status:'active',g:20,extras:0,faltas:0},
-  {name:'ME. CIBILS',     clinic:'Setiembre',sector:'PROGRAMAS',   shift:'MO',  hday:6,status:'active',g:21,extras:0,faltas:0},
+  {name:'L. PRIEU',       clinic:'Setiembre',sector:'PROGRAMAS',   shift:'M/T', hday:6,status:'active',g:20,extras:0,faltas:0, programa:'oncología'},
+  {name:'ME. CIBILS',     clinic:'Setiembre',sector:'PROGRAMAS',   shift:'MO',  hday:6,status:'active',g:21,extras:0,faltas:0, programa:'salud renal'},
   {name:'L. DOMINGUEZ',   clinic:'Setiembre',sector:'GINE SET',    shift:'GINE',hday:6,status:'active',g:20,extras:0,faltas:0},
   {name:'L. CORREA',      clinic:'Setiembre',sector:'GINE SET',    shift:'GINE',hday:6,status:'active',g:20,extras:0,faltas:0},
   {name:'V. LOZA',        clinic:'Setiembre',sector:'GINE SET',    shift:'GINE',hday:6,status:'active',g:20,extras:0,faltas:0},
@@ -73,18 +73,37 @@ const EMPS=[
   {name:'C. NUNEZ',       clinic:'Golf',     sector:'POLI GOLF',   shift:'MG',  hday:6,status:'active',g:20,extras:0,faltas:0},
   {name:'P. RIOS',        clinic:'Maldonado',sector:'MAL. MAÑANA', shift:'M',   hday:6,status:'active',g:21,extras:0,faltas:0},
   {name:'D. ACUNA',       clinic:'Maldonado',sector:'MAL. TARDE',  shift:'T',   hday:6,status:'active',g:21,extras:0,faltas:0},
+  // TISANERÍA
+  {name:'ELIDA',          clinic:'Setiembre',sector:'TISANERÍA',   shift:'M',   hday:6,status:'active',g:0, extras:0,faltas:0},
+  {name:'SILVANA',        clinic:'Setiembre',sector:'TISANERÍA',   shift:'M',   hday:6,status:'active',g:0, extras:0,faltas:0},
+  // BQ
+  {name:'F. GARCIA',      clinic:'Setiembre',sector:'BQ',          shift:'M',   hday:6,status:'active',g:0, extras:0,faltas:0},
+  {name:'A. HUART',       clinic:'Setiembre',sector:'BQ',          shift:'M',   hday:6,status:'active',g:0, extras:0,faltas:0},
+  // Schedules especiales
+  {name:'ANIBAL',         clinic:'Setiembre',sector:'PROGRAMAS',   shift:'LV',  hday:6,status:'active',g:0, extras:0,faltas:0, schedNote:'4to sáb + L-V exc. mié'},
+  {name:'J. RODRIGUEZ',   clinic:'Setiembre',sector:'—',           shift:'DOM', hday:6,status:'active',g:0, extras:0,faltas:0, schedNote:'dom-lun, desc. sáb'},
+  {name:'M. CABALLERO',   clinic:'Setiembre',sector:'—',           shift:'T',   hday:6,status:'active',g:0, extras:0,faltas:0, schedNote:'tarde L-V'},
+  {name:'ZUNINO',         clinic:'Aguada Park',sector:'A.PARK',    shift:'T',   hday:6,status:'active',g:0, extras:0,faltas:0},
+  {name:'C. DA SILVA',    clinic:'Setiembre',sector:'—',           shift:'T',   hday:6,status:'active',g:0, extras:0,faltas:0},
 ];
 
 const SUBS=[
-  {name:'C. PEREZ',    sen:8,pct:98,comp:['URGENCIA','OBSERVACIÓN','ECONOMATO'],g:12,status:'available'},
-  {name:'P. MORALES',  sen:5,pct:92,comp:['DOMICILIO','CPB'],g:9,status:'available'},
-  {name:'D. BARRETO',  sen:3,pct:85,comp:['HORNEROS','DOMICILIO'],g:8,status:'on-shift'},
-  {name:'V. MILA',     sen:2,pct:78,comp:['URGENCIA','DOMICILIO'],g:7,status:'available'},
-  {name:'M. FERNANDEZ',sen:4,pct:88,comp:['DOMICILIO','CPB'],g:10,status:'available'},
-  {name:'A. DENIS',    sen:1,pct:72,comp:['URGENCIA'],g:6,status:'available'},
-  {name:'V. SAMURIO',  sen:3,pct:82,comp:['HORNEROS','CPB'],g:8,status:'on-shift'},
-  {name:'L. PRIETO',   sen:2,pct:80,comp:['ECONOMATO','HORNEROS'],g:7,status:'available'},
-  {name:'M. CABALLERO',sen:5,pct:90,comp:['HORNEROS','OBSERVACIÓN'],g:9,status:'available'},
+  {name:'R. MACHADO',     sen:1,pct:80,comp:[],g:0, status:'available', disponibilidad:'tarde-vespertino'},
+  {name:'ME. CIBILS',     sen:1,pct:80,comp:[],g:0, status:'available', disponibilidad:'tarde-vespertino'},
+  {name:'G. FORNASIER',   sen:1,pct:80,comp:[],g:0, status:'available', disponibilidad:'tarde-vespertino'},
+  {name:'JOSELYN CASTRO', sen:1,pct:80,comp:[],g:0, status:'available', disponibilidad:'total'},
+  {name:'N. OJEDA',       sen:1,pct:80,comp:[],g:0, status:'available', disponibilidad:'tarde-vespertino'},
+  {name:'A. DENIS',       sen:1,pct:72,comp:['URGENCIA'],g:6,status:'available', disponibilidad:'tarde-vespertino'},
+  {name:'M. FERNANDEZ',   sen:4,pct:88,comp:['DOMICILIO','CPB'],g:10,status:'available', disponibilidad:'tarde-vespertino'},
+  {name:'V. MILA',        sen:2,pct:78,comp:['URGENCIA','DOMICILIO'],g:7,status:'available', disponibilidad:'mañana-tarde'},
+  {name:'V. SAMURIO',     sen:3,pct:82,comp:['HORNEROS','CPB'],g:8, status:'on-shift',  disponibilidad:'mañana-tarde'},
+  {name:'D. BARRETO',     sen:3,pct:85,comp:['HORNEROS','DOMICILIO'],g:8,status:'on-shift',  disponibilidad:'total'},
+  {name:'C. PEREZ',       sen:8,pct:98,comp:['URGENCIA','OBSERVACIÓN','ECONOMATO'],g:12,status:'available', disponibilidad:'tarde-vespertino'},
+  {name:'P. MORALES',     sen:5,pct:92,comp:['DOMICILIO','CPB'],g:9, status:'available', disponibilidad:'tarde-vespertino'},
+  {name:'A. ABREU',       sen:1,pct:80,comp:[],g:0, status:'available', disponibilidad:'total'},
+  {name:'M. GONZALEZ',    sen:1,pct:80,comp:[],g:0, status:'available', disponibilidad:'total'},
+  {name:'F. PÉREZ',       sen:1,pct:80,comp:[],g:0, status:'available', disponibilidad:'total'},
+  {name:'ANDRADA',        sen:1,pct:80,comp:[],g:0, status:'available', disponibilidad:'tarde-vespertino'},
 ];
 
 const COV=[
@@ -103,6 +122,8 @@ const SGRP=[
   {sector:'OBSERVACIÓN',emps:['R. GARCIA','M. PEREIRA','G. SANTA CRUZ','M. ISLAS']},
   {sector:'AMNP',       emps:['F. RODRIGUEZ','L. MAGLIANO','D. TITO','N. TERAN']},
   {sector:'ECONOMATO',  emps:['L. FAGUNDEZ','J. BOLON','F. CANTERO']},
+  {sector:'TISANERÍA',  emps:['ELIDA','SILVANA']},
+  {sector:'BQ',         emps:['F. GARCIA','A. HUART']},
 ];
 
 const WK={
@@ -131,6 +152,16 @@ const WK={
   'L. FAGUNDEZ':  ['','F','','','T','','T'],
   'J. BOLON':     ['','M','','','M','','M'],
   'F. CANTERO':   ['','LAR','LAR','LAR','LAR','LAR','LAR'],
+  // Nuevos fijos
+  'ELIDA':        ['M','M','M','M','M','M',''],
+  'SILVANA':      ['M','M','M','M','M','M',''],
+  'F. GARCIA':    ['M','M','M','M','M','M',''],
+  'A. HUART':     ['M','M','M','M','M','M',''],
+  'ANIBAL':       ['M','M','','M','M','',''],   // L-V exc. mié; 4to sáb según mes
+  'J. RODRIGUEZ': ['DOM','','','','','','DOM'],  // dom-lun, desc. sáb
+  'M. CABALLERO': ['T','T','T','T','T','',''],   // tarde L-V
+  'ZUNINO':       ['T','T','T','T','T','T',''],
+  'C. DA SILVA':  ['T','T','T','T','T','',''],
 };
 
 const MYSCHED={
@@ -139,6 +170,9 @@ const MYSCHED={
   20:'M',21:'M',22:'M',23:'M',24:'M',25:'M',26:null,27:'M',28:'M',
   29:'M',30:'M',31:'M'
 };
+
+// Turnos L-S: reciben 1 LE aleatorio por período en generación automática
+const LS_SHIFTS_LE=new Set(['M','MS','MC','MG','MU','MD','T','TS','TC','TG','TU','TD','RS']);
 
 const DAB='LMMJVSD';
 const WK_CODES=new Set(['M','MS','MC','MG','MO','MU','MD','T','TS','TC','TG','TO','TU','TD','RS','NO','NU','VO','VU','VD','CPB','GINE','AXO','H','AP','U1','U2','DOM','PSR','O','CG','CWM']);
@@ -301,14 +335,16 @@ function buildDynamicData(){
   if(!dbLoaded || !DB.funcionarios.length) return;
   const skip=new Set(['LAR','CERT','LE','F','DXF','CPL','E','LX1','LX2','LX3','LX4','LXE','NO CONVOCAR','MAT','PAT']);
 
-  // EMPS
+  // EMPS — incluye fijos + suplentes con titularidad momentánea
   EMPS.length=0;
-  DB.funcionarios.forEach(f=>{
+  const titulares = DB.suplentes.filter(s=>s.titularidad_temp);
+  [...DB.funcionarios, ...titulares].forEach(f=>{
     const ts=DB.turnos.filter(t=>t.funcionario_id===f.id);
     const g=ts.filter(t=>t.codigo&&!skip.has(t.codigo)).length;
     EMPS.push({name:fNombre(f), clinic:f.clinica?.nombre||'—', sector:f.sector?.nombre||'—',
       shift:f.turno_fijo||'M', hday:f.horas_dia||6, status:'active', id:f.id,
-      g, extras:g>22?(g-22)*6:0, faltas:ts.filter(t=>t.codigo==='F').length});
+      g, extras:g>22?(g-22)*6:0, faltas:ts.filter(t=>t.codigo==='F').length,
+      titularidad_temp: !!f.titularidad_temp});
   });
 
   // SUBS
@@ -340,16 +376,16 @@ function buildDynamicData(){
   if(cu) DB.turnos.filter(t=>t.funcionario_id===cu.id)
     .forEach(t=>{ MYSCHED[new Date(t.fecha+'T12:00:00').getUTCDate()]=t.codigo; });
 
-  // SGRP - sector groups
+  // SGRP - sector groups (fijos + suplentes con titularidad)
   SGRP.length=0;
   const secMap={};
-  DB.funcionarios.forEach(f=>{
+  [...DB.funcionarios, ...titulares].forEach(f=>{
     const s=f.sector?.nombre||'—';
     if(!secMap[s]) secMap[s]=[];
     secMap[s].push(fNombre(f));
   });
   const ord=['POLI MAÑANA','POLI TARDE','ANEXO','CPB','OBSERVACIÓN','AMNP','ECONOMATO',
-             'PROGRAMAS','GINE SET','HORNEROS','DOMICILIO','APOYO','CARRASCO','GOLF','MALDONADO','A.PARK'];
+             'PROGRAMAS','GINE SET','TISANERÍA','BQ','HORNEROS','DOMICILIO','APOYO','CARRASCO','GOLF','MALDONADO','A.PARK'];
   [...new Set([...ord,...Object.keys(secMap)])].forEach(s=>{
     if(secMap[s]?.length) SGRP.push({sector:s, emps:secMap[s]});
   });

@@ -52,6 +52,7 @@ async function loadDB(){
     // Re-render everything with real data
     buildDynamicData();
     initAll();
+    checkIngresoAlerts();
     const curView = document.querySelector('.view.act')?.id?.replace('v-','');
     if(curView) go(curView);
   } catch(err){
@@ -86,8 +87,8 @@ async function saveFuncionario(data){
 async function updateFuncionario(id, data){
   if(!sb) return null;
   // Only send valid funcionarios columns (exclude joined/computed fields)
-  const {apellido,nombre,tipo,email,telefono,fecha_nacimiento,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id} = data;
-  const cleanData = Object.fromEntries(Object.entries({apellido,nombre,tipo,email,telefono,fecha_nacimiento,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id}).filter(([,v])=>v!==undefined));
+  const {apellido,nombre,tipo,email,telefono,fecha_nacimiento,fecha_ingreso,alerta_ingreso_dias,titularidad_temp,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id} = data;
+  const cleanData = Object.fromEntries(Object.entries({apellido,nombre,tipo,email,telefono,fecha_nacimiento,fecha_ingreso,alerta_ingreso_dias,titularidad_temp,horas_semana,horas_dia,turno_fijo,activo,clinica_id,sector_id}).filter(([,v])=>v!==undefined));
   const {data:res, error} = await sb.from('funcionarios').update(cleanData).eq('id',id).select().single();
   if(error){ toast('er','Error','No se pudo actualizar'); return null; }
   const idx = DB.funcionarios.findIndex(f=>f.id===id);
@@ -182,6 +183,38 @@ async function createAlerta(tipo, titulo, descripcion, funcionarioId){
   return res;
 }
 
+// Revisa todos los funcionarios con fecha_ingreso y dispara alertas
+// cuando se alcanza el umbral de días configurado (default 45 = 1.5 meses)
+async function checkIngresoAlerts(){
+  if(!sb || !DB.funcionarios.length) return;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const ventana = 3; // disparar alerta en los 3 días previos al umbral
+  for(const f of DB.funcionarios){
+    if(!f.fecha_ingreso) continue;
+    const ingreso = new Date(f.fecha_ingreso+'T00:00:00');
+    if(isNaN(ingreso.getTime())) continue;
+    const dias   = f.alerta_ingreso_dias || 45;
+    const umbral = new Date(ingreso); umbral.setDate(umbral.getDate() + dias);
+    const diffMs = umbral - hoy;
+    const diffDias = Math.round(diffMs / 86400000);
+    if(diffDias < 0 || diffDias > ventana) continue; // ya pasó o falta más de 3 días
+    // Evitar duplicados: verificar si ya existe alerta del mismo tipo para este funcionario
+    const yaExiste = (DB.alertas||[]).some(a=>
+      a.funcionario_id === f.id &&
+      String(a.tipo||'').startsWith('ingreso_') &&
+      String(a.titulo||'').includes(String(dias))
+    );
+    if(yaExiste) continue;
+    const meses = (dias/30).toFixed(1).replace('.0','');
+    const nombre = fNombre(f);
+    const titulo = `Cumple ${meses} meses — ${nombre}`;
+    const desc   = diffDias === 0
+      ? `Hoy ${nombre} cumple ${meses} meses en la institución.`
+      : `En ${diffDias} día${diffDias>1?'s':''}, ${nombre} cumple ${meses} meses (${umbral.toLocaleDateString('es-UY')}).`;
+    await createAlerta('ingreso_'+dias, titulo, desc, f.id);
+  }
+}
+
 async function marcarAlertasLeidas(){
   if(!sb) return;
   await sb.from('alertas').update({leida:true}).eq('leida',false);
@@ -225,6 +258,7 @@ if(window.GApp?.registerLayer){
     updateCambio,
     createAlerta,
     marcarAlertasLeidas,
+    checkIngresoAlerts,
   });
 }
 
