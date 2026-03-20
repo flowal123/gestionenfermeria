@@ -42,8 +42,10 @@ exports.handler = async function(event) {
   }
 
   // 2. Verificar que el caller tiene rol admin en tabla usuarios
+  // callerData.email viene de Supabase Auth (con dominio) — se convierte a username para buscar en tabla
+  const callerUsername = callerData.email.replace(/@guardiapp\.app$/, '');
   const roleRes = await fetch(
-    `${SB_URL}/rest/v1/usuarios?email=eq.${encodeURIComponent(callerData.email)}&activo=eq.true&select=rol`,
+    `${SB_URL}/rest/v1/usuarios?email=eq.${encodeURIComponent(callerUsername)}&activo=eq.true&select=rol`,
     { headers: { apikey: SVC_KEY, Authorization: `Bearer ${SVC_KEY}` } }
   );
   const roles = await roleRes.json();
@@ -52,6 +54,8 @@ exports.handler = async function(event) {
   }
 
   // 3. Buscar el auth user por email (lista hasta 1000 usuarios)
+  // userEmail en tabla es username sin dominio — se agrega dominio para buscar en Supabase Auth
+  const authEmailTarget = userEmail.includes('@') ? userEmail : `${userEmail}@guardiapp.app`;
   const listRes = await fetch(`${SB_URL}/auth/v1/admin/users?page=1&per_page=1000`, {
     headers: { apikey: SVC_KEY, Authorization: `Bearer ${SVC_KEY}` }
   });
@@ -59,7 +63,7 @@ exports.handler = async function(event) {
     return { statusCode: 500, body: JSON.stringify({ error: 'No se pudo consultar usuarios de auth.' }) };
   }
   const listData = await listRes.json();
-  const authUser = (listData?.users || []).find(u => u.email === userEmail);
+  const authUser = (listData?.users || []).find(u => u.email === authEmailTarget);
   if (!authUser) {
     return { statusCode: 404, body: JSON.stringify({ error: `Usuario no encontrado en auth: ${userEmail}` }) };
   }

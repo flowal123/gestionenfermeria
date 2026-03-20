@@ -9,3 +9,9 @@ CREATE INDEX IF NOT EXISTS idx_usuarios_auth_user_id ON usuarios(auth_user_id);
 
 COMMENT ON COLUMN usuarios.must_change_password IS 'Si true, el usuario debe cambiar su contraseña al próximo login';
 COMMENT ON COLUMN usuarios.auth_user_id IS 'UUID del usuario en Supabase Auth (auth.users.id)';
+
+-- Normalizar emails: guardar solo nombre.apellido sin dominio
+-- Ejecutar UNA SOLA VEZ si la columna email todavía contiene @guardiapp.app
+UPDATE usuarios
+SET email = SPLIT_PART(email, '@', 1)
+WHERE email LIKE '%@guardiapp.app';

@@ -126,7 +126,7 @@ async function doLogin(){
       // Obtener rol y datos del funcionario desde la tabla usuarios
       const {data:uRow, error:uErr} = await sb.from('usuarios')
         .select('rol, activo, must_change_password, funcionario_id, funcionario:funcionario_id(apellido, nombre, sector:sector_id(nombre))')
-        .eq('email', authEmail)
+        .eq('email', userInp)
         .eq('activo', true)
         .maybeSingle();
       if(uErr || !uRow){
@@ -138,7 +138,7 @@ async function doLogin(){
       const f = uRow.funcionario;
       cUser = {
         name:           f ? `${f.apellido}${f.nombre?' '+f.nombre:''}` : userInp,
-        email:          authEmail,
+        email:          userInp,
         username:       userInp,
         funcionario_id: uRow.funcionario_id||null,
         initials:       f ? (f.apellido?.[0]||'')+(f.nombre?.[0]||'?') : (userInp[0]||'?').toUpperCase(),
@@ -147,7 +147,7 @@ async function doLogin(){
       };
       // Guardar auth_user_id en tabla usuarios si todavía no está registrado
       if(data?.user?.id){
-        sb.from('usuarios').update({auth_user_id:data.user.id}).eq('email',authEmail).is('auth_user_id',null).then(()=>{});
+        sb.from('usuarios').update({auth_user_id:data.user.id}).eq('email',userInp).is('auth_user_id',null).then(()=>{});
       }
       // Si debe cambiar contraseña: mostrar modal antes de continuar
       if(uRow.must_change_password){

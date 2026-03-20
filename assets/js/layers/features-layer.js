@@ -4198,7 +4198,7 @@ async function saveUser(){
       const authUserId=authData?.user?.id||null;
       // 2. Registrar en tabla usuarios
       const {error:uErr}=await sb.from('usuarios').insert({
-        email:authEmail, rol:rolSel, activo:true, funcionario_id:funcIdClean,
+        email:usernameInp, rol:rolSel, activo:true, funcionario_id:funcIdClean,
         auth_user_id:authUserId, must_change_password:mustChange
       });
       if(uErr){ toast('er','Error BD',uErr.message); return; }
@@ -5472,7 +5472,7 @@ async function bulkCreateUsers(){
     const username = genUsername(func);
     if(!username){ errors++; continue; }
     const authEmail = `${username}@guardiapp.app`;
-    if(existingEmails.has(authEmail)){ skipped++; continue; }
+    if(existingEmails.has(username)){ skipped++; continue; }
     // Crear en Supabase Auth
     const {data:authData, error:authErr} = await sb.auth.signUp({email:authEmail, password:'Clinica2026!'});
     if(authErr){ console.warn('[bulkCreate] signUp error:', username, authErr.message); errors++; continue; }
@@ -5480,11 +5480,11 @@ async function bulkCreateUsers(){
     // Insertar en tabla usuarios
     const role = func.tipo==='suplente' ? 'nurse' : 'nurse';
     const {error:uErr} = await sb.from('usuarios').insert({
-      email:authEmail, rol:role, activo:true, funcionario_id:func.id,
+      email:username, rol:role, activo:true, funcionario_id:func.id,
       auth_user_id:authUserId, must_change_password:true
     });
     if(uErr){ console.warn('[bulkCreate] insert error:', username, uErr.message); errors++; continue; }
-    existingEmails.add(authEmail);
+    existingEmails.add(username);
     created++;
   }
   // Recargar usuarios en DB
