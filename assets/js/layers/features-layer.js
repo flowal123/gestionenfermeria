@@ -3688,9 +3688,23 @@ function editUser(i){
   const set = (id, val) => { const el=document.getElementById(id); if(el&&val!=null) el.value=val; };
   set('newRole',   u.role||'nurse');
   set('uUsername', u.username||'');
-  // Marcar username como manual para no sobreescribir al seleccionar funcionario
+  // Username es readonly en edición — cambiarlo requiere API de admin
   const uun=document.getElementById('uUsername');
-  if(uun) uun.dataset.manual='1';
+  if(uun){
+    uun.readOnly=true;
+    uun.dataset.manual='1';
+    uun.style.opacity='0.5';
+    uun.title='El usuario no puede modificarse. Usá 🔑 Resetear contraseña para cambiar credenciales.';
+  }
+  // Mostrar nota aclaratoria bajo el campo de usuario
+  let unote=document.getElementById('uUsernameNote');
+  if(!unote){
+    unote=document.createElement('div');
+    unote.id='uUsernameNote';
+    unote.style.cssText='font-size:10px;color:var(--t3);margin-top:3px';
+    uun?.parentNode?.appendChild(unote);
+  }
+  unote.textContent='Solo podés cambiar el rol y el funcionario asociado.';
   // Asegurar opciones frescas y restaurar funcionario asociado
   populateSels();
   const uEmp=document.getElementById('uEmp');
@@ -4212,8 +4226,9 @@ async function saveUser(){
   const _sb=document.getElementById('userMSaveBtn');if(_sb)_sb.textContent='💾 Crear y Enviar Invitación';
   ['uUsername','uEmail'].forEach(id=>{
     const el=document.getElementById(id);
-    if(el){ el.value=''; delete el.dataset.manual; }
+    if(el){ el.value=''; el.readOnly=false; el.style.opacity=''; el.title=''; delete el.dataset.manual; }
   });
+  const unote=document.getElementById('uUsernameNote');if(unote)unote.remove();
   const uEmpEl=document.getElementById('uEmp');if(uEmpEl)uEmpEl.selectedIndex=0;
   const uFuncInfo=document.getElementById('uFuncInfo');if(uFuncInfo)uFuncInfo.style.display='none';
   renderUsers();
