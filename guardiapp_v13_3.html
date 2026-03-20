@@ -423,6 +423,17 @@
 </div><!-- /app -->
 <div id="mNavOverlay" class="mnav-ov" onclick="closeMobileNav()"></div>
 
+<!-- CONFIRM MODAL -->
+<div class="ov" id="confirmM"><div class="modal" style="max-width:380px">
+  <div class="mh"><div class="mh-t" id="confirmMTitle">Confirmar acción</div></div>
+  <div class="mb"><p id="confirmMMsg" style="color:var(--t2);font-size:13px;margin:0 0 16px"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn bg sm" onclick="closeM('confirmM');window._confirmCb&&window._confirmCb(false)">Cancelar</button>
+      <button class="btn bp sm" id="confirmMOk" onclick="closeM('confirmM');window._confirmCb&&window._confirmCb(true)">Confirmar</button>
+    </div>
+  </div>
+</div></div>
+
 <!-- MODALS -->
 <div class="ov" id="sectorM"><div class="modal" style="max-width:380px">
   <div class="mh"><div class="mh-t" id="sectorMTitle">🏥 Nuevo Sector</div><button class="mh-x" onclick="closeM('sectorM')">✕</button></div>

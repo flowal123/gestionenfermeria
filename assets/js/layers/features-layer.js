@@ -3588,6 +3588,13 @@ function renderHRRank(){
 // ........................................................
 
 // Derivar username visible desde el email almacenado en usuarios
+function appConfirm(title, msg, onConfirm, okLabel){
+  document.getElementById('confirmMTitle').textContent = title;
+  document.getElementById('confirmMMsg').textContent   = msg;
+  document.getElementById('confirmMOk').textContent    = okLabel||'Confirmar';
+  window._confirmCb = onConfirm;
+  openM('confirmM');
+}
 function usernameFromEmail(email){
   if(!email) return '—';
   return email.endsWith('@guardiapp.app') ? email.replace('@guardiapp.app','') : email;
@@ -3735,13 +3742,16 @@ async function toggleUser(i){
   if(!users[i]) return;
   const newState = !users[i].active;
   const action = newState ? 'habilitar' : 'deshabilitar';
-  if(!confirm(`¿Querés ${action} al usuario "${users[i].name}"?`)) return;
-  users[i].active = newState;
-  if(sb&&users[i].id){
-    await sb.from('usuarios').update({activo:newState}).eq('id',users[i].id);
-  }
-  renderUsers();
-  toast(newState?'ok':'wa', newState?'Usuario habilitado':'Usuario deshabilitado', users[i].name);
+  appConfirm(
+    newState ? 'Habilitar usuario' : 'Deshabilitar usuario',
+    `¿Querés ${action} al usuario "${users[i].name}"?`,
+    async (ok) => { if(!ok) return;
+      users[i].active = newState;
+      if(sb&&users[i].id) await sb.from('usuarios').update({activo:newState}).eq('id',users[i].id);
+      renderUsers();
+      toast(newState?'ok':'wa', newState?'Usuario habilitado':'Usuario deshabilitado', users[i].name);
+    }, newState ? 'Habilitar' : 'Deshabilitar'
+  );
 }
 
 const PDESC={
@@ -4008,7 +4018,7 @@ async function deleteEmpByName(name){
     toast('wa','No encontrado',`No se encontró ${name} en BD.`);
     return;
   }
-  const ok=confirm(`¿Eliminar a ${name}? Esta acción lo desactiva (no borra historial).`);
+  const ok = await new Promise(r => appConfirm('Eliminar funcionario', `¿Eliminar a ${name}? Esta acción lo desactiva (no borra historial).`, r, 'Eliminar'));
   if(!ok) return;
   if(sb){
     const res=await deleteFuncionario(dbEmp.id);
@@ -4030,7 +4040,7 @@ async function restoreEmpByName(name){
     toast('wa','No encontrado',`No se encontró ${name} en BD.`);
     return;
   }
-  const ok=confirm(`¿Reactivar a ${name}?`);
+  const ok = await new Promise(r => appConfirm('Reactivar funcionario', `¿Reactivar a ${name}?`, r, 'Reactivar'));
   if(!ok) return;
   if(sb){
     const res=await updateFuncionario(dbEmp.id,{activo:true});
@@ -4667,7 +4677,7 @@ async function deleteGen(idx){
     }
   }
 
-  if(!confirm(`¿Eliminar la generación de ${genLabel(g)}?\nSe borrarán todos los turnos del mes de la base de datos. Esta acción no se puede deshacer.`)) return;
+  if(!(await new Promise(r => appConfirm('Eliminar generación', `¿Eliminar la generación de ${genLabel(g)}? Se borrarán todos los turnos del mes. Esta acción no se puede deshacer.`, r, 'Eliminar')))) return;
 
   if(sb){
     const mm     = String(mo).padStart(2,'0');
@@ -4705,7 +4715,7 @@ async function deleteOrphanMonth(key){
   if(!m) return;
   const yr=parseInt(m[1],10), mo=parseInt(m[2],10);
   const label = getMonthLabel(yr, mo-1);
-  if(!confirm(`¿Borrar todos los turnos huérfanos de ${label}?\nEstos turnos no tienen generación asociada. La acción no se puede deshacer.`)) return;
+  if(!(await new Promise(r => appConfirm('Borrar turnos huérfanos', `¿Borrar todos los turnos huérfanos de ${label}? Estos turnos no tienen generación asociada. No se puede deshacer.`, r, 'Borrar')))) return;
   if(sb){
     const desde = `${yr}-${String(mo).padStart(2,'0')}-01`;
     const lastDay = new Date(Date.UTC(yr, mo, 0)).getUTCDate();
@@ -5420,7 +5430,7 @@ async function deleteSector(id, nombre){
   const funcsAll = [...(DB.funcionariosAll||[]), ...(DB.suplentesAll||[])];
   const count = funcsAll.filter(f=>f.sector?.nombre===nombre).length;
   if(count > 0){ toast('wa','No se puede eliminar',`${count} funcionario(s) usan este sector`); return; }
-  if(!confirm(`¿Eliminar sector "${nombre}"?`)) return;
+  if(!(await new Promise(r => appConfirm('Eliminar sector', `¿Eliminar el sector "${nombre}"?`, r, 'Eliminar')))) return;
   const {error} = await sb.from('sectores').delete().eq('id',id);
   if(error){ toast('er','Error eliminando sector',error.message); return; }
   toast('ok','Sector eliminado',nombre);
@@ -5485,7 +5495,12 @@ async function bulkCreateUsers(){
   if(!missing.length){
     toast('ok','Sin pendientes','Todos los funcionarios ya tienen usuario en el sistema.'); return;
   }
-  if(!confirm(`¿Crear ${missing.length} usuario(s) con contraseña "Clinica2026!" y cambio obligatorio al primer login?\n\nEste proceso puede tardar unos segundos.`)) return;
+  const confirmed = await new Promise(resolve => appConfirm(
+    'Crear usuarios faltantes',
+    `Se van a crear ${missing.length} usuario(s) con contraseña "Clinica2026!" y cambio obligatorio al primer login. El proceso puede tardar unos segundos.`,
+    resolve, 'Crear usuarios'
+  ));
+  if(!confirmed) return;
   let created=0, skipped=0;
   const errorList=[];
   for(const func of missing){
@@ -5499,12 +5514,7 @@ async function bulkCreateUsers(){
       const isDupe = authErr.message?.toLowerCase().includes('already');
       if(isDupe){
         // Usuario ya existe en Auth pero no en tabla — intentar vincular via RPC
-        const rpcRes = await fetch(`${window._sbUrl||''}/rest/v1/rpc/get_auth_user_id`,{
-          method:'POST',
-          headers:{apikey:window._sbAnon||'','Content-Type':'application/json'},
-          body:JSON.stringify({user_email:authEmail})
-        }).catch(()=>null);
-        const existingId = rpcRes?.ok ? await rpcRes.json().catch(()=>null) : null;
+        const {data:existingId} = await sb.rpc('get_auth_user_id', {user_email: authEmail}).catch(()=>({data:null}));
         if(existingId){
           await sb.from('usuarios').insert({email:username, rol:'nurse', activo:true, funcionario_id:func.id, auth_user_id:existingId, must_change_password:true}).catch(()=>{});
           existingEmails.add(username); created++; continue;
