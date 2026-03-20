@@ -13,9 +13,17 @@
     return;
   }
 
-  setTimeout(() => {
-    features?.initEJ?.();
-    infra.initSB?.();
-  }, 500);
+  // Esperar a que la SDK de Supabase esté disponible antes de inicializar
+  const waitForSB = (attempts = 0) => {
+    if(typeof supabase !== 'undefined'){
+      features?.initEJ?.();
+      infra.initSB?.();
+    } else if(attempts < 20){
+      setTimeout(() => waitForSB(attempts + 1), 200);
+    } else {
+      console.error('Supabase SDK no cargó después de 4 segundos');
+    }
+  };
+  setTimeout(() => waitForSB(), 100);
 });
 

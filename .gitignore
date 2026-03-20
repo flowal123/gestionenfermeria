@@ -19,3 +19,20 @@ paseguardia/.firebase/
 
 # Archives
 *.zip
+
+# Scripts con credenciales sensibles (service role key)
+scripts/crear_usuarios_bulk.py
+
+# Claude Code local settings (puede contener keys)
+.claude/settings.local.json
+.claude/worktrees/
+
+# Excel con datos sensibles
+*.xlsx
+
+# Backups UI
+backup-ui-*/
+
+# Python cache
+**/__pycache__/
+*.pyc

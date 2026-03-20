@@ -1,39 +1,65 @@
 ﻿// SUPABASE CONFIG + DB
 // ........................................................
 const SB_URL = 'https://mrrjipzarpqksogrnalz.supabase.co';
-const SB_KEY = 'sb_publishable_Av-rU1CVm1CRV2D8WZuxLQ_Uxa_2OTF';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ycmppcHphcnBxa3NvZ3JuYWx6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzMTgzOTQsImV4cCI6MjA4Nzg5NDM5NH0.GVXFwnzL8NMcMQt54k_JJN6o8uncLRrHY7pmZ3l8huI';
 // sb declared at top of script
 function initSB(){
   if(typeof supabase === 'undefined'){ console.warn('Supabase SDK no cargó'); return; }
   sb = supabase.createClient(SB_URL, SB_KEY);
-  console.log('Supabase conectado o"');
+  console.log('Supabase conectado ✓');
 }
 
 // "—? Carga todos los datos desde Supabase "—————————————————?
+async function _loadTurnosPaginado(dateFrom, dateTo){
+  const PAGE = 1000;
+  let all = [], from = 0;
+  while(true){
+    const {data, error} = await sb.from('turnos')
+      .select('funcionario_id, fecha, codigo, sector_id')
+      .gte('fecha', dateFrom).lte('fecha', dateTo)
+      .order('fecha').range(from, from + PAGE - 1);
+    if(error){ console.error('Error paginando turnos', error); break; }
+    if(!data?.length) break;
+    all = all.concat(data);
+    if(data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 async function loadDB(){
   if(!sb){ console.warn('Supabase no iniciado'); return; }
   showDBLoading(true);
   try {
-    const [fRes, tRes, lRes, cRes, aRes, uRes, phRes] = await Promise.all([
+    const yearFrom = `${new Date().getFullYear()}-01-01`;
+    const yearTo   = `${new Date().getFullYear()+1}-12-31`;
+    const [fRes, lRes, cRes, aRes, uRes, phRes, secRes, genRes, codRes, turnosData] = await Promise.all([
       sb.from('funcionarios').select('*, clinica:clinicas(nombre,codigo), sector:sectores(nombre,codigo)').order('apellido'),
-      sb.from('turnos').select('funcionario_id, fecha, codigo, sector_id').gte('fecha','2026-01-01').lte('fecha','2026-12-31').limit(20000),
       sb.from('licencias').select('id, funcionario_id, suplente_id, tipo, fecha_desde, fecha_hasta, dias, genera_vacante, estado, observaciones, funcionario:funcionario_id(id,apellido,nombre,telefono,fecha_nacimiento,sector:sector_id(nombre)), suplente:suplente_id(apellido,nombre)').in('estado',["activa","pendiente"]),
       sb.from('cambios').select('id, solicitante_id, receptor_id, turno_cede, fecha_cede, turno_recibe, fecha_recibe, estado, created_at, solicitante:solicitante_id(apellido,nombre), receptor:receptor_id(apellido,nombre)').order('created_at',{ascending:false}),
-      sb.from('alertas').select('*').eq('leida',false).order('created_at',{ascending:false}).limit(20),
+      sb.from('alertas').select('*').eq('leida',false).order('created_at',{ascending:false}).limit(100),
       sb.from('usuarios').select('id, email, rol, activo, funcionario_id, funcionario:funcionario_id(id,apellido,nombre,email,sector:sector_id(nombre),clinica:clinica_id(nombre))').eq('activo',true),
       sb.from('patron_historico').select('funcionario_id,patron,ciclo_ref,turno_fijo,turno_ciclo,turno_semana,vigente_desde,vigente_hasta').order('vigente_desde'),
+      sb.from('sectores').select('id,nombre,codigo').order('nombre'),
+      sb.from('generaciones').select('*').order('created_at',{ascending:false}),
+      sb.from('codigos_turno').select('codigo,descripcion,es_laboral,color').order('codigo'),
+      _loadTurnosPaginado(yearFrom, yearTo),
     ]);
     if(fRes.error) throw fRes.error;
-    if(tRes.error) console.error('O turnos:', tRes.error.message);
-    if(lRes.error) console.error('O licencias:', lRes.error.message);
-    if(cRes.error) console.error('O cambios:', cRes.error.message);
-    if(uRes.error) console.error('O usuarios:', uRes.error.message);
-    if(phRes.error) console.warn('patron_historico no disponible:', phRes.error.message);
+    if(lRes.error) console.error('Error cargando licencias');
+    if(cRes.error) console.error('Error cargando cambios');
+    if(uRes.error) console.error('Error cargando usuarios');
+    if(phRes.error) console.warn('patron_historico no disponible');
+    if(secRes.error) console.warn('sectores no disponible');
+    if(genRes.error) console.warn('generaciones no disponible');
+    if(codRes.error) console.warn('codigos_turno no disponible — usando fallback');
+    DB.sectores         = secRes.data||[];
+    DB.generaciones     = genRes.data||[];
     DB.funcionariosAll  = (fRes.data||[]).filter(f=>f.tipo==='fijo');
     DB.suplentesAll     = (fRes.data||[]).filter(f=>f.tipo==='suplente');
     DB.funcionarios     = DB.funcionariosAll.filter(f=>f.activo!==false);
     DB.suplentes        = DB.suplentesAll.filter(f=>f.activo!==false);
-    DB.turnos           = tRes.data||[];
+    DB.turnos           = turnosData;
     DB.licencias        = lRes.data||[];
     DB.cambios          = cRes.data||[];
     DB.alertas          = aRes.data||[];
@@ -42,8 +68,15 @@ async function loadDB(){
     // but DB alerts come from DB.alertas filtered by leida=false
     DB.usuarios         = uRes.data||[];
     DB.patronHistorico  = phRes.data||[];
+    DB.codigosTurno     = codRes.data||[];
+    // Reconstruir WK_CODES desde BD si la tabla existe y tiene datos
+    if(DB.codigosTurno.length){
+      WK_CODES = new Set(DB.codigosTurno.filter(c=>c.es_laboral).map(c=>c.codigo.toUpperCase()));
+      console.log(`WK_CODES reconstruido desde BD: ${WK_CODES.size} códigos laborales`);
+    }
     dbLoaded = true;
-    console.log(`o. DB: ${DB.funcionarios.length} fijos activos, ${DB.suplentes.length} suplentes activos, ${DB.turnos.length} turnos, ${LIC_DATA.length} licencias`);
+    if(typeof loadGENS === 'function') loadGENS(); // sync GENS from DB.generaciones
+    console.log('DB sincronizada ✓');
     // Actualizar badges con datos reales
     const pendCambios = DB.cambios.filter(c=>c.estado==='pendiente').length;
     const pendAlertas = DB.alertas.length;
@@ -129,6 +162,36 @@ async function deleteTurno(funcionarioId, fecha){
   return true;
 }
 
+// "—? GENERACIONES "—————————————————————————————————————————?
+async function saveGeneracion(payload){
+  if(!sb) return null;
+  const {data:res, error} = await sb.from('generaciones').insert(payload).select().single();
+  if(error){
+    console.error('Error al guardar generación:', error);
+    toast('er','Error al guardar generación',error.message?.slice(0,120)||'Verificá que la tabla tenga todas las columnas requeridas');
+    return null;
+  }
+  DB.generaciones.unshift(res);
+  return res;
+}
+
+async function updateGeneracion(id, fields){
+  if(!sb) return null;
+  const {data:res, error} = await sb.from('generaciones').update(fields).eq('id',id).select().single();
+  if(error){ toast('er','Error','No se pudo actualizar la generación'); return null; }
+  const idx = DB.generaciones.findIndex(g=>g.id===id);
+  if(idx>=0) DB.generaciones[idx]={...DB.generaciones[idx],...res};
+  return res;
+}
+
+async function deleteGeneracion(id){
+  if(!sb) return false;
+  const {error} = await sb.from('generaciones').delete().eq('id',id);
+  if(error){ toast('er','Error','No se pudo eliminar la generación'); return false; }
+  DB.generaciones = DB.generaciones.filter(g=>g.id!==id);
+  return true;
+}
+
 // "—? LICENCIAS "————————————————————————————————————————————?
 async function saveLicencia(data){
   if(!sb) return null;
@@ -155,9 +218,15 @@ async function saveLicencia(data){
 }
 
 // "—? CAMBIOS DE TURNO "————————————————————————————————————?
+function getSupervisorFuncionarioIds(){
+  return (DB.usuarios||[])
+    .filter(u=>['admin','supervisor'].includes(u.rol) && u.funcionario_id)
+    .map(u=>u.funcionario_id);
+}
+
 async function saveCambio(data){
   if(!sb) return null;
-  const {data:res, error} = await sb.from('cambios').insert(data).select().single();
+  const {data:res, error} = await sb.from('cambios').insert(data).select('id, solicitante_id, receptor_id, turno_cede, fecha_cede, turno_recibe, fecha_recibe, estado, motivo, created_at, solicitante:solicitante_id(apellido,nombre), receptor:receptor_id(apellido,nombre)').single();
   if(error){
     if(error.code==='23505'){
       toast('wa','Solicitud duplicada','Ya existe una solicitud pendiente igual.');
@@ -179,9 +248,9 @@ async function deleteFuncionario(id){
   return true;
 }
 
-async function updateCambio(id, estado){
+async function updateCambio(id, estado, extraFields={}){
   if(!sb) return null;
-  const {data:res, error} = await sb.from('cambios').update({estado}).eq('id',id).select().single();
+  const {data:res, error} = await sb.from('cambios').update({estado,...extraFields}).eq('id',id).select('id, solicitante_id, receptor_id, turno_cede, fecha_cede, turno_recibe, fecha_recibe, estado, motivo, created_at, solicitante:solicitante_id(apellido,nombre), receptor:receptor_id(apellido,nombre)').single();
   if(error){ toast('er','Error','No se pudo actualizar el cambio'); return null; }
   const idx = DB.cambios.findIndex(c=>c.id===id);
   if(idx>=0) DB.cambios[idx]=res;
@@ -212,26 +281,30 @@ async function checkIngresoAlerts(){
     const diffMs = umbral - hoy;
     const diffDias = Math.round(diffMs / 86400000);
     if(diffDias < 0 || diffDias > ventana) continue; // ya pasó o falta más de 3 días
-    // Evitar duplicados: verificar si ya existe alerta del mismo tipo para este funcionario
+    const nombre = fNombre(f);
+    const titulo = `Cumple ${dias} días de ingreso — ${nombre}`;
+    // Evitar duplicados: buscar alerta broadcast con mismo título
     const yaExiste = (DB.alertas||[]).some(a=>
-      a.funcionario_id === f.id &&
+      !a.funcionario_id &&
       String(a.tipo||'').startsWith('ingreso_') &&
-      String(a.titulo||'').includes(String(dias))
+      String(a.titulo||'') === titulo
     );
     if(yaExiste) continue;
-    const meses = (dias/30).toFixed(1).replace('.0','');
-    const nombre = fNombre(f);
-    const titulo = `Cumple ${meses} meses — ${nombre}`;
     const desc   = diffDias === 0
-      ? `Hoy ${nombre} cumple ${meses} meses en la institución.`
-      : `En ${diffDias} día${diffDias>1?'s':''}, ${nombre} cumple ${meses} meses (${umbral.toLocaleDateString('es-UY')}).`;
-    await createAlerta('ingreso_'+dias, titulo, desc, f.id);
+      ? `Hoy ${nombre} cumple ${dias} días desde su ingreso a la institución.`
+      : `En ${diffDias} día${diffDias>1?'s':''}, ${nombre} cumplirá ${dias} días de ingreso (${umbral.toLocaleDateString('es-UY')}).`;
+    await createAlerta('ingreso_'+dias, titulo, desc, null); // broadcast → solo visible para admin/supervisor
   }
 }
 
 async function marcarAlertasLeidas(){
   if(!sb) return;
-  await sb.from('alertas').update({leida:true}).eq('leida',false);
+  // Filtrar por usuario para no marcar alertas ajenas
+  // Admin/supervisor: solo las propias + broadcast; RLS maneja el resto
+  const fid = DB.usuarios?.find(u=>u.email===window.cUser?.email)?.funcionario_id;
+  let q = sb.from('alertas').update({leida:true}).eq('leida',false);
+  if(fid) q = q.or(`funcionario_id.is.null,funcionario_id.eq.${fid}`);
+  await q;
   DB.alertas = [];
   document.getElementById('alertBadge').textContent='';
   document.getElementById('topAlerts').textContent='0';
@@ -287,7 +360,11 @@ if(window.GApp?.registerLayer){
     saveLicencia,
     saveCambio,
     updateCambio,
+    saveGeneracion,
+    updateGeneracion,
+    deleteGeneracion,
     createAlerta,
+    getSupervisorFuncionarioIds,
     marcarAlertasLeidas,
     checkIngresoAlerts,
     getPatronVigente,

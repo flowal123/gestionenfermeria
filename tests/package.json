@@ -1,0 +1,20 @@
+{
+  "name": "guardiapp-rls-tests",
+  "version": "1.0.0",
+  "description": "Supabase Auth + RLS validation suite for GuardiaApp",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:rls": "vitest run rls",
+    "test:auth": "vitest run auth",
+    "test:table": "vitest run rls/$npm_config_table"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.5",
+    "vitest": "^1.6.0"
+  }
+}

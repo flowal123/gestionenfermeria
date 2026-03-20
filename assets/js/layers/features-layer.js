@@ -1,12 +1,13 @@
-﻿// DASHBOARD
+﻿// SECURITY HELPERS
+// ........................................................
+// A03: HTML escape — apply to all user-controlled data inserted via innerHTML
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+// DASHBOARD
 // ........................................................
 function renderCov(){
-  const g=document.getElementById('covGrid');if(!g)return;
-  g.innerHTML=COV.map(c=>{
-    const cl=c.pct>=90?'pbg':c.pct>=75?'pba':'pbr';
-    const tc=c.pct>=90?'var(--green)':c.pct>=75?'var(--amber)':'var(--red)';
-    return `<div class="cvc"><div class="cvn">${c.name}</div><div class="pw"><div class="pb ${cl}" style="width:${c.pct}%"></div></div><div class="cvm"><span>${c.n} enf.</span><span style="color:${tc}">${c.pct}%</span></div></div>`;
-  }).join('');
+  // Delegado a _renderCovForMes via renderDashboard()
+  if(typeof renderDashboard==='function') renderDashboard();
 }
 
 function renderDashAlerts(){
@@ -17,46 +18,69 @@ function renderDashAlerts(){
   if(dbLoaded){
     // 7ª guardia: verificar días CONSECUTIVOS (no total mensual)
     DB.funcionarios.forEach(f=>{
-      const wk=DB.turnos.filter(t=>t.funcionario_id===f.id&&t.codigo&&!skip.has(t.codigo)).map(t=>t.fecha).sort();
-      let maxC=wk.length?1:0,cur=1;
+      const key='7g_'+f.id;
+      if(DISMISSED_DASH.has(key)) return;
+      const _hoy=new Date().toISOString().slice(0,10);
+      const _desde=new Date(Date.now()-45*86400000).toISOString().slice(0,10);
+      const _hace3=new Date(Date.now()-3*86400000).toISOString().slice(0,10);
+      const wk=DB.turnos.filter(t=>t.funcionario_id===f.id&&t.codigo&&!skip.has(t.codigo)&&t.fecha>=_desde).map(t=>t.fecha).sort();
+      let maxC=wk.length?1:0,cur=1,maxEnd=wk[0]||'';
       for(let i=1;i<wk.length;i++){
         const diff=Math.round((new Date(wk[i]+'T12:00:00')-new Date(wk[i-1]+'T12:00:00'))/86400000);
-        cur=diff===1?cur+1:1;if(cur>maxC)maxC=cur;
+        cur=diff===1?cur+1:1;if(cur>maxC){maxC=cur;maxEnd=wk[i];}
       }
-      if(maxC>=7){
+      if(maxC>=7&&maxEnd>=_hace3){
         items.push({
-          cls:'cr2',ic:'🚨',
-          t:`7ª Guardia consecutiva — ${fNombre(f)} (${f.sector?.nombre||''})`,
+          key, cls:'cr2',ic:'🚨',
+          t:`7ª Guardia consecutiva — ${esc(fNombre(f))} (${esc(f.sector?.nombre||'')})`,
           d:`${maxC} días seguidos sin descanso · genera horas extra obligatorias`,
-          m:f.clinica?.nombre||'',
+          m:esc(f.clinica?.nombre||''),
           btn:`<button class="btn bp xs" style="flex-shrink:0" onclick="go('alerts')">Ver</button>`,
         });
       }
     });
 
     // Vacantes sin cubrir — agrupadas en una sola alerta
-    const vacSinCubrir=DB.licencias.filter(l=>l.genera_vacante&&!l.suplente_id&&['activa','pendiente'].includes(l.estado));
-    if(vacSinCubrir.length){
-      items.push({
-        cls:'wa',ic:'⚠️',
-        t:`${vacSinCubrir.length} vacante${vacSinCubrir.length>1?'s':''} sin cubrir`,
-        d:vacSinCubrir.slice(0,2).map(l=>`${l.funcionario?fNombre(l.funcionario):'—'} · ${l.tipo}`).join(' · '),
-        m:'Sin suplente asignado',
-        btn:`<button class="btn bp xs" style="flex-shrink:0" onclick="go('licenses')">Asignar</button>`,
+    if(!DISMISSED_DASH.has('vac')){
+      const hoy=new Date().toISOString().slice(0,10);
+      const _planKeys=new Set((GENS||[]).map(g=>getGeneratedMonthKey(g)).filter(Boolean));
+      const vacSinCubrir=DB.licencias.filter(l=>{
+        if(!l.genera_vacante||l.suplente_id||!['activa','pendiente'].includes(l.estado)) return false;
+        if((l.fecha_hasta||'')<hoy) return false;
+        if(_planKeys.size===0) return true;
+        const licMes=(l.fecha_desde||'').slice(0,7);
+        const activa=l.fecha_desde<=hoy&&l.fecha_hasta>=hoy;
+        return activa||_planKeys.has(licMes);
       });
+      if(vacSinCubrir.length){
+        items.push({
+          key:'vac', cls:'wa',ic:'⚠️',
+          t:`${vacSinCubrir.length} vacante${vacSinCubrir.length>1?'s':''} sin cubrir`,
+          d:vacSinCubrir.slice(0,2).map(l=>`${l.funcionario?esc(fNombre(l.funcionario)):'—'} · ${esc(l.tipo)}`).join(' · '),
+          m:'Sin suplente asignado',
+          btn:`<button class="btn bp xs" style="flex-shrink:0" onclick="go('licenses')">Asignar</button>`,
+        });
+      }
     }
 
-    // Cambios pendientes
-    const pCambios=DB.cambios.filter(x=>x.estado==='pendiente');
-    if(pCambios.length){
-      items.push({
-        cls:'in',
-        ic:'🔄',
-        t:`${pCambios.length} cambio${pCambios.length>1?'s':''} pendiente${pCambios.length>1?'s':''}`,
-        d:pCambios.slice(0,2).map(x=>`${x.solicitante?fNombre(x.solicitante):'—'} — ${x.receptor?fNombre(x.receptor):'—'}`).join(' · '),
-        m:'Requieren aprobación',
-        btn:`<button class="btn bp xs" style="flex-shrink:0" onclick="go('trades')">Ver</button>`,
-      });
+    // Cambios que requieren aprobación supervisor (aceptado por receptor)
+    if(!DISMISSED_DASH.has('chg')){
+      const myFuncId=String(getCurrFuncionario()?.id||'');
+      let pendCambios=[];
+      if(['admin','supervisor'].includes(cRole)){
+        pendCambios=DB.cambios.filter(x=>x.estado==='aceptado_receptor');
+      } else {
+        pendCambios=DB.cambios.filter(x=>x.estado==='pendiente'&&String(x.receptor_id||'')===myFuncId);
+      }
+      if(pendCambios.length){
+        items.push({
+          key:'chg', cls:'in', ic:'🔄',
+          t:`${pendCambios.length} cambio${pendCambios.length>1?'s':''} pendiente${pendCambios.length>1?'s':''}`,
+          d:pendCambios.slice(0,2).map(x=>`${x.solicitante?esc(fNombre(x.solicitante)):'—'} — ${x.receptor?esc(fNombre(x.receptor)):'—'}`).join(' · '),
+          m:['admin','supervisor'].includes(cRole)?'Requieren tu aprobación':'Te proponen un intercambio',
+          btn:`<button class="btn bp xs" style="flex-shrink:0" onclick="go('trades')">Ver</button>`,
+        });
+      }
     }
   }
 
@@ -66,53 +90,225 @@ function renderDashAlerts(){
     `;
   }else{
     c.innerHTML=items.slice(0,3).map(a=>`
-      <div class="ai ${a.cls}">
+      <div class="ai ${a.cls}" id="dai_${a.key}">
         <span style="font-size:17px;flex-shrink:0">${a.ic}</span>
-        <div>
+        <div style="flex:1">
           <div class="ai-t">${a.t}</div>
           <div class="ai-d">${a.d}</div>
           <div class="ai-m">${a.m}</div>
         </div>
         ${a.btn||''}
+        <button class="t-x" style="align-self:flex-start;margin-left:4px" onclick="dismissDashAlert('${a.key}')" title="Descartar">✕</button>
       </div>
     `).join('');
   }
 
-  // Update dashboard stat cards dynamically
-  if(dbLoaded){
-    const fijos = DB.funcionarios.filter(f=>f.activo!==false&&f.tipo!=='suplente').length;
-    const sups  = DB.suplentes.filter(s=>s.activo!==false).length;
-    const total = fijos + sups;
-    const el=id=>document.getElementById(id);
-    el('dashFuncNum')&&(el('dashFuncNum').textContent=String(total));
-    el('dashFuncSub')&&(el('dashFuncSub').textContent=`${fijos} fijos · ${sups} suplentes`);
+  const _an=document.getElementById('dashAlertNum');
+  if(_an) _an.textContent=String(items.length);
+}
 
-    const today=new Date().toISOString().slice(0,10);
-    const onLic=new Set(DB.licencias.filter(l=>l.estado==='activa'&&l.fecha_desde<=today&&l.fecha_hasta>=today).map(l=>l.funcionario_id));
-    const present=total-onLic.size;
-    const pct=total?Math.round(present/total*100):100;
-    const col=pct>=90?'var(--green)':pct>=75?'var(--amber)':'var(--red)';
-    const pctEl=el('dashCovPct'); if(pctEl){pctEl.textContent=`${pct}%`;pctEl.style.color=col;}
-    const slEl=el('dashCovSl'); if(slEl) slEl.style.background=col;
-    el('dashCovSub')&&(el('dashCovSub').textContent=`${present}/${total} presentes`);
+// ── Estado global del mes seleccionado en el dashboard ──
+let DASH_MES = (()=>{ const n=new Date(); return {year:n.getFullYear(),month:n.getMonth()}; })();
 
-    const licHoy=DB.licencias.filter(l=>l.estado==='activa'&&l.fecha_desde<=today&&l.fecha_hasta>=today);
-    el('dashLicNum')&&(el('dashLicNum').textContent=String(licHoy.length));
-    const byTipo={};
-    licHoy.forEach(l=>{byTipo[l.tipo]=(byTipo[l.tipo]||0)+1;});
-    el('dashLicSub')&&(el('dashLicSub').textContent=Object.entries(byTipo).map(([k,v])=>`${v} ${k}`).join(' · ')||'Sin licencias activas hoy');
+// Inicializa o refresca todo el dashboard (selector + todas las secciones)
+function renderDashboard(){
+  if(!dbLoaded) return;
+  const el=id=>document.getElementById(id);
 
-    el('dashAlertNum')&&(el('dashAlertNum').textContent=String(items.length));
-    // Título KPIs dinámico con mes/año actual
-    const kpiTit=el('dashKpiTitle');
-    if(kpiTit){ const n=new Date(); kpiTit.textContent=`KPIs — ${getMonthLabel(n.getFullYear(),n.getMonth())}`; }
+  // Construir lista de meses disponibles desde GENS
+  const genKeys=(GENS||[]).map(g=>getGeneratedMonthKey(g)).filter(Boolean).sort();
+  const _n=new Date();
+  const todayKey=`${_n.getFullYear()}-${String(_n.getMonth()+1).padStart(2,'0')}`;
+
+  // Si hay meses generados usar el último; si no, usar mes actual
+  if(genKeys.length){
+    const curKey=`${DASH_MES.year}-${String(DASH_MES.month+1).padStart(2,'0')}`;
+    const selKey=genKeys.includes(curKey)?curKey:genKeys[genKeys.length-1];
+    DASH_MES={year:parseInt(selKey.slice(0,4)),month:parseInt(selKey.slice(5,7))-1};
+  } else {
+    DASH_MES={year:_n.getFullYear(),month:_n.getMonth()};
   }
+
+  // Poblar selector
+  const sel=el('dashMesSel');
+  const lbl=el('dashMesLabel');
+  if(sel && genKeys.length){
+    const selKey=`${DASH_MES.year}-${String(DASH_MES.month+1).padStart(2,'0')}`;
+    sel.innerHTML=genKeys.map(k=>`<option value="${k}">${ymLabelFromKey(k)?.label||k}</option>`).join('');
+    sel.value=selKey;
+    sel.style.display='';
+    if(lbl) lbl.style.display='none';
+  } else if(sel){
+    sel.style.display='none';
+    if(lbl){ lbl.textContent=`${getMonthLabel(DASH_MES.year,DASH_MES.month)} (sin generación)`; lbl.style.display=''; }
+  }
+
+  _renderDashForMes(DASH_MES.year, DASH_MES.month);
+}
+
+function onDashMesChange(key){
+  if(!key) return;
+  DASH_MES={year:parseInt(key.slice(0,4)),month:parseInt(key.slice(5,7))-1};
+  _renderDashForMes(DASH_MES.year, DASH_MES.month);
+}
+
+function _renderDashForMes(year, month){
+  const el=id=>document.getElementById(id);
+  const mesLabel=getMonthLabel(year,month);
+  const m2=String(month+1).padStart(2,'0');
+  const mesFrom=`${year}-${m2}-01`;
+  const daysInMonth=new Date(Date.UTC(year,month+1,0)).getUTCDate();
+  const mesTo=`${year}-${m2}-${String(daysInMonth).padStart(2,'0')}`;
+
+  // Stat cards
+  const fijos=DB.funcionarios.filter(f=>f.activo!==false).length;
+  const sups=DB.suplentes.filter(s=>s.activo!==false).length;
+  const total=fijos+sups;
+  el('dashFuncNum')&&(el('dashFuncNum').textContent=String(total));
+  el('dashFuncSub')&&(el('dashFuncSub').textContent=`${fijos} fijos · ${sups} suplentes`);
+
+  // Cobertura: funcionarios SIN licencia activa en el mes
+  const onLicMes=new Set(DB.licencias.filter(l=>
+    ['activa','pendiente'].includes(l.estado)&&(l.fecha_hasta||'')>=mesFrom&&(l.fecha_desde||'')<=mesTo
+  ).map(l=>l.funcionario_id));
+  const present=total-onLicMes.size;
+  const pct=total?Math.round(present/total*100):100;
+  const col=pct>=90?'var(--green)':pct>=75?'var(--amber)':'var(--red)';
+  el('dashCovLbl')&&(el('dashCovLbl').textContent=`Cobertura — ${mesLabel}`);
+  const pctEl=el('dashCovPct'); if(pctEl){pctEl.textContent=`${pct}%`;pctEl.style.color=col;}
+  el('dashCovSl')&&(el('dashCovSl').style.background=col);
+  el('dashCovSub')&&(el('dashCovSub').textContent=`${present}/${total} sin licencia activa`);
+
+  // Licencias del mes
+  const licsMes=DB.licencias.filter(l=>
+    ['activa','pendiente'].includes(l.estado)&&(l.fecha_hasta||'')>=mesFrom&&(l.fecha_desde||'')<=mesTo
+  );
+  el('dashLicLbl')&&(el('dashLicLbl').textContent=`Licencias — ${mesLabel}`);
+  el('dashLicNum')&&(el('dashLicNum').textContent=String(licsMes.length));
+  const byTipo={};
+  licsMes.forEach(l=>{byTipo[l.tipo]=(byTipo[l.tipo]||0)+1;});
+  el('dashLicSub')&&(el('dashLicSub').textContent=Object.entries(byTipo).map(([k,v])=>`${v} ${k}`).join(' · ')||'Sin licencias en el mes');
+
+  // Cobertura por sector — recalcular para el mes
+  _renderCovForMes(mesFrom, mesTo, mesLabel);
+
+  // KPIs
+  el('dashKpiTitle')&&(el('dashKpiTitle').textContent=`KPIs — ${mesLabel}`);
+  renderDashKPIs(year, month);
+}
+
+function _renderCovForMes(mesFrom, mesTo, mesLabel){
+  const g=document.getElementById('covGrid'); if(!g) return;
+  const t=document.getElementById('dashCovSecTitle');
+  if(t) t.textContent=`Cobertura por Sector — ${mesLabel}`;
+
+  // Funcionarios con licencia en el mes por sector
+  const onLicIds=new Set(DB.licencias.filter(l=>
+    ['activa','pendiente'].includes(l.estado)&&(l.fecha_hasta||'')>=mesFrom&&(l.fecha_desde||'')<=mesTo
+  ).map(l=>l.funcionario_id));
+
+  // Usar SGRP (ya construido en core-layer) para tener los grupos de sector
+  if(!SGRP.length){ g.innerHTML='<div style="color:var(--t3);font-size:12px">Sin datos de sectores</div>'; return; }
+  g.innerHTML=SGRP.map(gr=>{
+    const tot=gr.emps.length;
+    // Mapear nombres a ids
+    const funcIds=DB.funcionarios.filter(f=>gr.emps.includes(fNombre(f))).map(f=>f.id);
+    const absent=funcIds.filter(id=>onLicIds.has(id)).length;
+    const act=tot-absent;
+    const pct=tot?Math.round(act/tot*100):100;
+    const cl=pct>=90?'pbg':pct>=75?'pba':'pbr';
+    const tc=pct>=90?'var(--green)':pct>=75?'var(--amber)':'var(--red)';
+    return `<div class="cvc"><div class="cvn">${esc(gr.sector)}</div><div class="pw"><div class="pb ${cl}" style="width:${pct}%"></div></div><div class="cvm"><span>${tot} enf.</span><span style="color:${tc}">${pct}%</span></div></div>`;
+  }).join('');
+}
+
+function renderDashKPIs(year, month){
+  const grid=document.getElementById('dashKpiGrid'); if(!grid) return;
+  if(!dbLoaded){ return; }
+
+  const skip=new Set(['LAR','CERT','LE','F','DXF','CPL','E','LX1','LX2','LX3','LX4','LXE','NO CONVOCAR','MAT','PAT']);
+  const m2=String(month+1).padStart(2,'0');
+  const mesFrom=`${year}-${m2}-01`;
+  const daysInMonth=new Date(Date.UTC(year,month+1,0)).getUTCDate();
+  const mesTo=`${year}-${m2}-${String(daysInMonth).padStart(2,'0')}`;
+  const fijos=DB.funcionarios.filter(f=>f.activo!==false);
+  const nFijos=fijos.length||1;
+
+  // ── 1. Cumplimiento de planilla ──────────────────────────────
+  // % funcionarios fijos con al menos un turno de trabajo asignado este mes
+  const conTurno=new Set(
+    DB.turnos.filter(t=>t.fecha>=mesFrom&&t.fecha<=mesTo&&isW(t.codigo)).map(t=>t.funcionario_id)
+  );
+  const cumplCount=fijos.filter(f=>conTurno.has(f.id)).length;
+  const cumplPct=Math.round(cumplCount/nFijos*100);
+  const cumplCol=cumplPct>=90?'var(--green)':cumplPct>=70?'var(--amber)':'var(--red)';
+  const cumplBar=cumplPct>=90?'pbg':cumplPct>=70?'pba':'pbr';
+
+  // ── 2. Horas Extra (7ª guardia) ──────────────────────────────
+  // Calcular guardias consecutivas por funcionario este mes
+  let totalExtraGuardias=0;
+  const extraNombres=[];
+  fijos.forEach(f=>{
+    const dias=DB.turnos
+      .filter(t=>t.funcionario_id===f.id&&t.fecha>=mesFrom&&t.fecha<=mesTo&&isW(t.codigo))
+      .map(t=>t.fecha).sort();
+    let maxC=dias.length?1:0, cur=1;
+    for(let i=1;i<dias.length;i++){
+      const diff=Math.round((new Date(dias[i]+'T12:00:00')-new Date(dias[i-1]+'T12:00:00'))/86400000);
+      cur=diff===1?cur+1:1; if(cur>maxC)maxC=cur;
+    }
+    const extra=Math.max(0,maxC-6);
+    if(extra>0){ totalExtraGuardias+=extra; extraNombres.push(`${f.apellido}`); }
+  });
+  const totalExtraHs=totalExtraGuardias*8; // aprox 8hs por guardia extra
+  const extraPct=Math.min(100,Math.round(totalExtraHs/400*100)); // escala: 400hs max visual
+  const extraSub=extraNombres.length
+    ? extraNombres.slice(0,3).join(' · ')+(extraNombres.length>3?` · +${extraNombres.length-3} más`:'')
+    : 'Sin horas extra este mes';
+
+  // ── 3. Tasa Ausentismo ───────────────────────────────────────
+  // Días de licencia activos este mes / total días laborables esperados
+  const licsDelMes=DB.licencias.filter(l=>
+    !skip.has(l.tipo||'') && ['activa','pendiente'].includes(l.estado||'') &&
+    (l.fecha_hasta||'')>=mesFrom && (l.fecha_desde||'')<=mesTo
+  );
+  let totalDiasLic=0;
+  licsDelMes.forEach(l=>{
+    const from=new Date(Math.max(new Date(l.fecha_desde+'T12:00:00'),new Date(mesFrom+'T12:00:00')));
+    const to=new Date(Math.min(new Date(l.fecha_hasta+'T12:00:00'),new Date(mesTo+'T12:00:00')));
+    totalDiasLic+=Math.max(0,Math.round((to-from)/86400000)+1);
+  });
+  const totalEsperados=daysInMonth*nFijos||1;
+  const ausPct=Math.min(100,Math.round(totalDiasLic/totalEsperados*100*10)/10);
+  const ausCol=ausPct<=3?'var(--green)':ausPct<=8?'var(--amber)':'var(--red)';
+  const ausBar=ausPct<=3?'pbg':ausPct<=8?'pba':'pbr';
+  const ausBarW=Math.min(100,ausPct*5); // escala: 20% = barra llena
+
+  grid.innerHTML=`
+    <div class="card"><div class="cb">
+      <div class="slbl">Cumplimiento Planilla</div>
+      <div style="font-family:var(--ff-display);font-weight:800;font-size:22px;color:${cumplCol}">${cumplPct}%</div>
+      <div class="pw"><div class="pb ${cumplBar}" style="width:${cumplPct}%"></div></div>
+      <div class="ssub" style="margin-top:5px">${cumplCount}/${nFijos} fijos con turno asignado</div>
+    </div></div>
+    <div class="card"><div class="cb">
+      <div class="slbl">Horas Extra (7ª guardia)</div>
+      <div style="font-family:var(--ff-display);font-weight:800;font-size:22px;color:var(--amber)">${totalExtraHs} hs</div>
+      <div class="pw"><div class="pb pba" style="width:${extraPct}%"></div></div>
+      <div class="ssub" style="margin-top:5px">${extraSub}</div>
+    </div></div>
+    <div class="card"><div class="cb">
+      <div class="slbl">Tasa Ausentismo</div>
+      <div style="font-family:var(--ff-display);font-weight:800;font-size:22px;color:${ausCol}">${ausPct}%</div>
+      <div class="pw"><div class="pb ${ausBar}" style="width:${ausBarW}%"></div></div>
+      <div class="ssub" style="margin-top:5px">${totalDiasLic} días lic. · ${licsDelMes.length} licencia${licsDelMes.length!==1?'s':''} activa${licsDelMes.length!==1?'s':''}</div>
+    </div></div>`;
 }
 
 // ........................................................
 // CALENDAR
 // ........................................................
-let SCHED_CTX = {year:2026, month:0}; // month: 0-11
+let SCHED_CTX = (()=>{const _n=new Date();return{year:_n.getFullYear(),month:_n.getMonth()};})(); // month: 0-11
 
 function getAvailableMonthsGlobal(){
   const seen=new Set();
@@ -123,18 +319,26 @@ function getAvailableMonthsGlobal(){
     seen.add(key);
     out.push({year:y,month:m,label:getMonthLabel(y,m)});
   };
+  // Solo meses de generaciones aprobadas
   (GENS||[]).filter(g=>g.estado==='aprobada').forEach(g=>{
     if(g.anio && Number.isInteger(g.mesNum)) push(g.anio,g.mesNum-1);
-    else{
-      const p=parseMesLabel(g.mes);
-      if(p) push(p.year,p.month);
-    }
+    else{ const p=parseMesLabel(g.mes); if(p) push(p.year,p.month); }
   });
+  // Meses con turnos en DB que NO tienen generación — entradas manuales
+  // Usar getGeneratedMonthKey que ya tiene fallback parseMesLabel (clave: "yyyy-MM" 1-indexed)
+  // Convertir a formato "yyyy-m" 0-indexed para comparar con getUTCMonth()
+  const genKeys=new Set((GENS||[]).map(g=>{
+    const k=getGeneratedMonthKey(g); if(!k) return null;
+    const [y,mm]=k.split('-').map(Number);
+    return `${y}-${mm-1}`;
+  }).filter(Boolean));
   (DB.turnos||[]).forEach(t=>{
     const d=new Date(`${t.fecha}T12:00:00`);
-    if(!Number.isNaN(d.getTime())) push(d.getUTCFullYear(), d.getUTCMonth());
+    if(Number.isNaN(d.getTime())) return;
+    const y=d.getUTCFullYear(), m=d.getUTCMonth();
+    if(!genKeys.has(`${y}-${m}`)) push(y,m); // solo si no hay generación para ese mes
   });
-  if(!out.length) push(2026,0);
+  if(!out.length){const _n=new Date();push(_n.getFullYear(),_n.getMonth());}
   out.sort((a,b)=>a.year===b.year ? a.month-b.month : a.year-b.year);
   return out;
 }
@@ -176,7 +380,8 @@ function chW(d){
   cWeek=Math.max(0,Math.min(meta.weeks-1,cWeek+d));
   renderCal();
 }
-function setSF(btn,s){cSF=s;document.querySelectorAll('#sfBtns .btn').forEach(b=>{b.className='btn bg sm';});btn.className='btn bp sm';renderCal();}
+function setSF(btn,s){cSF=s;renderCal();}   // legacy
+function setSFSel(val){cSF=val||'all';renderCal();}
 function isMobileSchedule(){ return window.matchMedia('(max-width: 700px)').matches; }
 
 function getCambioSideName(c, side){
@@ -186,6 +391,28 @@ function getCambioSideName(c, side){
   }
   if(c.receptor) return fNombre(c.receptor);
   return getNameByFuncionarioId(c.receptor_id)||'';
+}
+
+function daysBetween(refStr,dateStr){
+  return Math.round((new Date(dateStr+'T12:00:00')-new Date(refStr+'T12:00:00'))/86400000);
+}
+
+function isWorkDay(patron,cicloRef,dateStr){
+  const wd=(new Date(dateStr+'T12:00:00').getUTCDay()+6)%7; // 0=Lun,6=Dom
+  if(patron==='4x1'){
+    if(!cicloRef) return wd<5;
+    const off=((daysBetween(cicloRef,dateStr)%5)+5)%5;
+    return off<4;
+  }
+  if(patron==='6x1'){
+    if(!cicloRef) return wd<6;
+    const off=((daysBetween(cicloRef,dateStr)%7)+7)%7;
+    return off<6;
+  }
+  if(patron==='LS') return wd<6;
+  if(patron==='SD') return wd>=5;
+  if(patron==='36H') return true;
+  return wd<5; // LV default
 }
 
 function getLicenciaCodeForDate(empId,dateStr){
@@ -382,7 +609,7 @@ function editC(emp,day,code){
 // ........................................................
 
 const MY_MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Setiembre','Octubre','Noviembre','Diciembre'];
-let MY_AGENDA_CTX = {year:2026, month:0}; // month: 0-11
+let MY_AGENDA_CTX = (()=>{const _n=new Date();return{year:_n.getFullYear(),month:_n.getMonth()};})(); // month: 0-11
 let TRADE_CTX = {selectedDate:'', myCode:'', candidates:[], selectedIdx:-1, showUnavailable:false};
 
 function getMonthLabel(year, month){
@@ -431,17 +658,14 @@ function getMyAvailableMonths(empId){
     });
   }
 
-  if(!months.length) pushMonth(2026,0); // fallback demo
+  if(!months.length){const _n=new Date();pushMonth(_n.getFullYear(),_n.getMonth());}
   months.sort((a,b)=> a.year===b.year ? a.month-b.month : a.year-b.year);
   return months;
 }
 
 // Build schedule map {day: code} for funcionario in selected year/month
-function getUserSched(empId, year=2026, month=0){
-  if(!empId || !DB.turnos.length){
-    // demo fallback solo para Enero 2026
-    return (year===2026 && month===0) ? {...MYSCHED} : {};
-  }
+function getUserSched(empId, year=new Date().getFullYear(), month=new Date().getMonth()){
+  if(!empId) return {};
   const sched = {};
   DB.turnos.filter(t=>t.funcionario_id===empId).forEach(t=>{
     const d=new Date(`${t.fecha}T12:00:00`);
@@ -450,13 +674,11 @@ function getUserSched(empId, year=2026, month=0){
       sched[d.getUTCDate()]=t.codigo;
     }
   });
-  // fallback demo solo si es Enero 2026 y no hay datos
-  if(!Object.keys(sched).length && year===2026 && month===0) return {...MYSCHED};
   return sched;
 }
 
-function getDemoSchedForName(name, year=2026, month=0){
-  if(year!==2026 || month!==0) return {};
+function getDemoSchedForName(name, year=new Date().getFullYear(), month=new Date().getMonth()){
+  if(!WK[name]) return {};
   // Demo weekly pattern repeated across month
   const base = WK[name] || [];
   const daysInMonth=new Date(Date.UTC(year,month+1,0)).getUTCDate();
@@ -795,7 +1017,7 @@ function renderNurseView(v){
   `;
   buildMyCalGrid(userSched, active.year, active.month);
 }
-function buildMyCalGrid(sched, year=2026, month=0){
+function buildMyCalGrid(sched, year=new Date().getFullYear(), month=new Date().getMonth()){
   const userSched = sched || {};
   const g=document.getElementById('myCalG');if(!g)return;
   // Get birthday from DB
@@ -886,11 +1108,15 @@ function openCompSched(compKey){
 }
 
 function renderSubView(v){
-  const sub=SUBS.find(s=>s.name===cUser.name)||SUBS[0];
+  const sub=SUBS.find(s=>s.name===cUser?.name)||SUBS[0];
+  if(!sub){ v.innerHTML=`<div style="padding:40px;text-align:center;color:var(--t2)">Sin datos de suplente disponibles.</div>`; return; }
+  const _mesLabel=getMonthLabel(MY_AGENDA_CTX.year,MY_AGENDA_CTX.month);
+  const _mm=String(MY_AGENDA_CTX.month+1).padStart(2,'0');
+  const _yy=MY_AGENDA_CTX.year;
   const assigned=[3,6,9,12,14,17,20,22];
   v.innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <div><div style="font-family:var(--ff-display);font-weight:800;font-size:18px">Mis Asignaciones — Enero 2026</div>
+      <div><div style="font-family:var(--ff-display);font-weight:800;font-size:18px">Mis Asignaciones — ${_mesLabel}</div>
       <div style="font-size:12px;color:var(--t2);margin-top:3px">${sub.name} · Suplente · Antigüedad ${sub.sen} años · Cumplimiento ${sub.pct}%</div></div>
     </div>
     <div class="g4" style="margin-bottom:16px">
@@ -904,7 +1130,7 @@ function renderSubView(v){
       ${assigned.slice(0,4).map((d,i)=>`
         <div class="sub-card ${i<2?'pending':'accepted'}" id="sc${i}">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-            <div style="font-weight:700;font-size:13px">${d.toString().padStart(2,'0')}/01/2026 — <span class="sh sM" style="margin-left:4px">MO</span></div>
+            <div style="font-weight:700;font-size:13px">${d.toString().padStart(2,'0')}/${_mm}/${_yy} — <span class="sh sM" style="margin-left:4px">MO</span></div>
             <span class="chip ${i<2?'ca':'cg'}">${i<2?'Pendiente confirmación':'Confirmada ✓'}</span>
           </div>
           <div style="font-size:11px;color:var(--t2);margin-bottom:${i<2?8:0}px">Sector: OBSERVACIÓN · Turno: 06:00—12:00 · Reemplaza: R. GARCIA</div>
@@ -1026,31 +1252,44 @@ function renderSubs2(){
   }).join('') || '<tr><td colspan="9" style="color:var(--t3);padding:20px;text-align:center">Sin resultados para el filtro seleccionado</td></tr>';
 }
 
-// Competencias state
-let COMP_STATE = null; // {subName: Set of sectors}
+// Competencias state — keyed by funcionario UUID
+let COMP_STATE = null; // {funcId: Set of sector names}
 function getCompState(){
   if(!COMP_STATE){
     COMP_STATE={};
-    SUBS.forEach(s=>{ COMP_STATE[s.name]=new Set(s.comp||[]); });
+    if(dbLoaded){
+      [...DB.funcionarios, ...DB.suplentes].forEach(f=>{
+        COMP_STATE[f.id]=new Set(f.competencias||[]);
+      });
+    } else {
+      SUBS.forEach(s=>{ COMP_STATE[s.name]=new Set(s.comp||[]); });
+    }
   }
   return COMP_STATE;
 }
 
 function renderCompMat(){
-  const secs=['URGENCIA','OBSERVACIÓN','CPB','ECONOMATO','DOMICILIO','HORNEROS','POLI MAÑANA','AMNP'];
+  const secs = (dbLoaded&&DB.sectores&&DB.sectores.length)
+    ? DB.sectores.map(s=>s.nombre)
+    : ['URGENCIA','OBSERVACIÓN','CPB','ECONOMATO','DOMICILIO','HORNEROS','POLI MAÑANA','AMNP'];
+  // Reset state so it reloads from DB on next call
+  COMP_STATE = null;
   const state=getCompState();
+  const funcs = dbLoaded
+    ? [...DB.funcionarios, ...DB.suplentes].map(f=>({name:`${f.apellido}, ${f.nombre}`,id:f.id,tipo:f.tipo}))
+    : SUBS.map(s=>({name:s.name,id:s.name,tipo:'suplente'}));
   let h='<div style="margin-bottom:10px;font-size:11px;color:var(--t2)">Hacé click en una celda para activar/desactivar una competencia. Los cambios se guardan automáticamente.</div>';
-  h+='<div class="tw"><table><thead><tr><th>Suplente</th>';
+  h+='<div class="tw"><table><thead><tr><th>Funcionario</th>';
   secs.forEach(s=>h+=`<th style="text-align:center;font-size:9px">${s}</th>`);
   h+='</tr></thead><tbody>';
-  const subs = dbLoaded&&DB.suplentes.length?DB.suplentes.map(s=>({name:`${s.apellido}, ${s.nombre}`,id:s.id})):SUBS.map(s=>({name:s.name,id:null}));
-  subs.forEach((s,si)=>{
-    const comps = state[s.name]||new Set();
-    h+=`<tr><td><strong>${s.name}</strong></td>`;
+  funcs.forEach(f=>{
+    const comps = state[f.id]||new Set();
+    const badge = f.tipo==='suplente'?'<span style="font-size:9px;background:var(--adim);color:var(--amber);padding:1px 5px;border-radius:3px;margin-left:4px">SUP</span>':'';
+    h+=`<tr><td><strong>${f.name}</strong>${badge}</td>`;
     secs.forEach(sec=>{
       const has=comps.has(sec);
-      h+=`<td style="text-align:center;cursor:pointer;transition:background .1s" onclick="toggleComp('${s.name}','${sec}',this)" title="${has?'Quitar':'Agregar'} competencia ${sec}">
-        <span id="comp_${si}_${sec.replace(/ /g,'_')}" style="font-size:16px;transition:all .15s">${has?'✅':'⬜'}</span>
+      h+=`<td style="text-align:center;cursor:pointer;transition:background .1s" onclick="toggleComp('${f.id}','${sec}',this)" title="${has?'Quitar':'Agregar'} competencia ${sec}">
+        <span style="font-size:16px;transition:all .15s">${has?'✅':'⬜'}</span>
       </td>`;
     });
     h+='</tr>';
@@ -1059,17 +1298,25 @@ function renderCompMat(){
   const cont=document.getElementById('compMat');if(cont)cont.innerHTML=h;
 }
 
-async function toggleComp(subName, sector, cell){
+async function toggleComp(funcId, sector, cell){
   const state=getCompState();
-  if(!state[subName]) state[subName]=new Set();
-  const has=state[subName].has(sector);
-  if(has) state[subName].delete(sector); else state[subName].add(sector);
+  if(!state[funcId]) state[funcId]=new Set();
+  const has=state[funcId].has(sector);
+  if(has) state[funcId].delete(sector); else state[funcId].add(sector);
   const span=cell.querySelector('span');
   if(span){ span.textContent=has?'⬜':'✅'; span.style.transform='scale(1.3)'; setTimeout(()=>span.style.transform='',200); }
   cell.style.background=has?'':'rgba(30,201,126,.08)';
   setTimeout(()=>cell.style.background='',600);
-  toast('ok',has?'Competencia removida':'Competencia agregada',`${subName} · ${sector}`);
-  // Save to Supabase if available (future: upsert competencias table)
+  // Sync to DB.funcionarios/suplentes in-memory
+  const func=[...DB.funcionarios,...DB.suplentes].find(f=>f.id===funcId);
+  const funcName = func ? `${func.apellido}, ${func.nombre}` : funcId;
+  toast('ok',has?'Competencia removida':'Competencia agregada',`${funcName} · ${sector}`);
+  if(sb && funcId){
+    const newComps=[...state[funcId]];
+    const {error}=await sb.from('funcionarios').update({competencias:newComps}).eq('id',funcId);
+    if(error) toast('er','Error guardando competencia',error.message);
+    else if(func) func.competencias=newComps;
+  }
 }
 
 function filterT(id,val){document.querySelectorAll(`#${id} tr`).forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(val.toLowerCase())?'':'none';});}
@@ -1087,35 +1334,36 @@ function setLicFil(btn, val){
   renderLics();
 }
 
+// Calcula el score de un suplente para una licencia dada (sin efectos secundarios)
+function scoreSuplente(s, lic){
+  const empSector=lic.funcionario?.sector?.nombre||lic.sec||lic.sector||'';
+  const empClinica=lic.funcionario?.clinica?.nombre||lic.clinica||'';
+  const cubierto=DB.funcionarios.find(f=>f.id===(lic.funcionario_id||lic.funcionario?.id));
+  const turnoReq=cubierto?.turno_fijo||'M';
+  const mesPrefix=(lic.fecha_desde||lic.from||'').slice(0,7);
+  const sc=s.clinica?.nombre||'';
+  const ss=s.sector?.nombre||'';
+  const sameSector=ss===empSector||sc===empClinica?2:0;
+  const turnoMatch=s.turno_fijo===turnoReq?3:0;
+  const hasComp=(s.competencias||[]).includes(empSector)?2:0;
+  const guardias=DB.turnos.filter(t=>t.funcionario_id===s.id&&isW(t.codigo)).length;
+  const guardiasMes=DB.turnos.filter(t=>t.funcionario_id===s.id&&t.fecha.startsWith(mesPrefix)&&isW(t.codigo)).length;
+  const overwork=Math.max(0,(guardiasMes-20)*0.5);
+  return sameSector+turnoMatch+hasComp-guardias*0.01-overwork;
+}
+
 function getSuplenteSugeridos(lic){
   if(!dbLoaded || !DB.suplentes.length) return [];
   const from=new Date((lic.fecha_desde||lic.from)+'T12:00:00');
   const to=new Date((lic.fecha_hasta||lic.to)+'T12:00:00');
-  const empClinica=lic.funcionario?.clinica?.nombre||lic.clinica||'';
-  const empSector=lic.funcionario?.sector?.nombre||lic.sec||lic.sector||'';
-  const cubierto=DB.funcionarios.find(f=>f.id===(lic.funcionario_id||(lic.funcionario?.id)));
-  const turnoReq=cubierto?.turno_fijo||'M';
-  const mesPrefix=(lic.fecha_desde||lic.from||'').slice(0,7);
   return DB.suplentes
     .filter(s=>s.activo!==false)
-    .filter(s=>{
-      // Sin turnos de trabajo conflictivos en el rango de fechas
-      return !DB.turnos.some(t=>{
-        if(t.funcionario_id!==s.id) return false;
-        const td=new Date(t.fecha+'T12:00:00');
-        return td>=from && td<=to && isW(t.codigo);
-      });
-    })
-    .map(s=>{
-      const sc=s.clinica?.nombre||'';
-      const ss=s.sector?.nombre||'';
-      const sameSector=ss===empSector||sc===empClinica?2:0;
-      const turnoMatch=(s.turno_fijo===turnoReq)?3:0;  // +3 mismo turno que el cubierto
-      const guardias=DB.turnos.filter(t=>t.funcionario_id===s.id&&isW(t.codigo)).length;
-      const guardiasMes=DB.turnos.filter(t=>t.funcionario_id===s.id&&t.fecha.startsWith(mesPrefix)&&isW(t.codigo)).length;
-      const overwork=Math.max(0,(guardiasMes-20)*0.5);  // penalizar si ya tiene >20 guardias en el mes
-      return {...s, _score:sameSector + turnoMatch - guardias*0.01 - overwork};
-    })
+    .filter(s=>!DB.turnos.some(t=>{
+      if(t.funcionario_id!==s.id) return false;
+      const td=new Date(t.fecha+'T12:00:00');
+      return td>=from && td<=to && isW(t.codigo);
+    }))
+    .map(s=>({...s, _score:scoreSuplente(s,lic)}))
     .sort((a,b)=>b._score-a._score)
     .slice(0,5);
 }
@@ -1133,14 +1381,18 @@ async function generateSuplenteTurnos(lic){
   if(!suplente || !cubierto) return 0;
   const turnoACubrir=cubierto.turno_fijo||'M';
   const sectorId=lic.sector_id||cubierto.sector_id||null;
+  const supPatron=suplente.patron||'LV';
+  const supCicloRef=suplente.ciclo_ref||null;
   const records=[];
   let d=new Date((lic.fecha_desde||lic.from)+'T12:00:00');
   const end=new Date((lic.fecha_hasta||lic.to)+'T12:00:00');
   while(d<=end){
     const dateStr=d.toISOString().slice(0,10);
-    const conflicto=(DB.turnos||[]).find(t=>t.funcionario_id===suplente.id&&t.fecha===dateStr);
-    if(!conflicto){
-      records.push({funcionario_id:suplente.id,fecha:dateStr,codigo:turnoACubrir,sector_id:sectorId});
+    if(isWorkDay(supPatron, supCicloRef, dateStr)){
+      const conflicto=(DB.turnos||[]).find(t=>t.funcionario_id===suplente.id&&t.fecha===dateStr);
+      if(!conflicto){
+        records.push({funcionario_id:suplente.id,fecha:dateStr,codigo:turnoACubrir,sector_id:sectorId});
+      }
     }
     d.setUTCDate(d.getUTCDate()+1);
   }
@@ -1159,8 +1411,169 @@ async function asignarSuplenteLic(licId, supId, supNombre){
   toast('ok','Suplente asignado',`${supNombre} — pendiente aprobación supervisora`);
 }
 
+// Variante silenciosa para uso en generación automática (sin render ni toast)
+async function _asignarSuplenteLicSilent(licId, supId, supNombre){
+  if(!sb) return;
+  const {error}=await sb.from('licencias').update({suplente_id:supId,estado:'pendiente'}).eq('id',licId);
+  if(error){ console.warn('Auto-assign suplente failed:', error.message); return; }
+  const l=DB.licencias.find(x=>x.id===licId);
+  if(l){ l.suplente_id=supId; l.estado='pendiente'; l.suplente={apellido:supNombre.split(', ')[0],nombre:supNombre.split(', ')[1]||''}; }
+}
+
+// ........................................................
+// MODAL DE REVISIÓN DE COBERTURA (generación)
+// ........................................................
+let _supReviewResolve = null; // resolve de la Promise de espera
+
+function _showSuplenteModal(vacantes, mesLabel){
+  return new Promise(resolve=>{
+    _supReviewResolve = (confirm)=>{
+      closeM('supReviewM');
+      if(!confirm){ resolve([]); return; }
+      // Leer selecciones del modal
+      const result=[];
+      vacantes.forEach((l,i)=>{
+        const sel=document.getElementById(`supSel_${i}`);
+        if(sel?.value){
+          const sup=DB.suplentes.find(s=>String(s.id)===sel.value);
+          if(sup) result.push({licId:l.id, supId:sup.id, supNombre:fNombre(sup)});
+        }
+      });
+      resolve(result);
+    };
+
+    const info=document.getElementById('supReviewInfo');
+    const body=document.getElementById('supReviewBody');
+    document.querySelector('#supReviewM .mh-t').textContent=`🧑‍⚕️ Cobertura de vacantes — ${mesLabel}`;
+    if(info) info.textContent=`${vacantes.length} licencia${vacantes.length!==1?'s':''} sin suplente asignado en este mes. Revisá las sugerencias antes de confirmar.`;
+
+    const supOpts=DB.suplentes
+      .filter(s=>s.activo!==false)
+      .map(s=>`<option value="${s.id}">${fNombre(s)} · ${s.sector?.nombre||'—'} · ${s.turno_fijo||'—'}</option>`)
+      .join('');
+
+    body.innerHTML=vacantes.map((l,i)=>{
+      const funcNombre=l.funcionario?fNombre(l.funcionario):'—';
+      const sector=l.funcionario?.sector?.nombre||'—';
+      const desde=l.fecha_desde||'—', hasta=l.fecha_hasta||'—';
+      // Score y ordenar suplentes para esta licencia
+      const scored=DB.suplentes
+        .filter(s=>s.activo!==false)
+        .map(s=>({...s,_score:scoreSuplente(s,l)}))
+        .sort((a,b)=>b._score-a._score);
+      const bestId=scored[0]?.id||'';
+      return `<div style="padding:12px 0;border-bottom:1px solid var(--b)" data-from="${l.fecha_desde||''}" data-to="${l.fecha_hasta||''}">
+        <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px">
+            <div style="font-size:13px;font-weight:600">${funcNombre}</div>
+            <div style="font-size:11px;color:var(--t3);margin-top:2px">${sector} · ${l.tipo||'LAR'} · ${desde} → ${hasta}</div>
+          </div>
+          <div class="fg" style="flex:1;min-width:200px;margin:0">
+            <label>Suplente asignado</label>
+            <select id="supSel_${i}">
+              <option value="">— Sin asignar —</option>
+              ${DB.suplentes.filter(s=>s.activo!==false).map(s=>`
+                <option value="${s.id}" ${String(s.id)===String(bestId)?'selected':''}>
+                  ${fNombre(s)} · ${s.sector?.nombre||'—'} · ${s.turno_fijo||'—'}
+                </option>`).join('')}
+            </select>
+          </div>
+        </div>
+        ${scored[0]?`<div style="font-size:10px;color:var(--blue);margin-top:6px">⭐ Mejor candidato: ${fNombre(scored[0])} (score ${scored[0]._score.toFixed(1)})</div>`:''}
+      </div>`;
+    }).join('');
+
+    openM('supReviewM');
+  });
+}
+
+function _supReviewAutoAll(){
+  // Asignar mejor suplente disponible por dropdown, evitando repetir el mismo para fechas solapadas
+  const assigned=new Map(); // supId -> [{from, to}]
+  document.querySelectorAll('[id^="supSel_"]').forEach(sel=>{
+    const idx=parseInt(sel.id.replace('supSel_',''),10);
+    // Obtener fechas de la vacante desde el data- del elemento contenedor
+    const container=sel.closest('[data-from]');
+    const vacFrom=container?new Date(container.dataset.from+'T12:00:00'):null;
+    const vacTo  =container?new Date(container.dataset.to  +'T12:00:00'):null;
+    // Buscar el primer option cuyo suplente no tenga solapamiento con asignaciones previas
+    const chosen=[...sel.options].find(o=>{
+      if(!o.value) return false;
+      if(!vacFrom||!vacTo) return true; // sin fechas: tomar el primero disponible
+      const prev=assigned.get(o.value)||[];
+      return !prev.some(r=>r.from<=vacTo && r.to>=vacFrom);
+    });
+    if(chosen){
+      sel.value=chosen.value;
+      if(vacFrom&&vacTo){
+        if(!assigned.has(chosen.value)) assigned.set(chosen.value,[]);
+        assigned.get(chosen.value).push({from:vacFrom,to:vacTo});
+      }
+    }
+  });
+}
+
+// Auto-asignar el mejor suplente disponible a TODAS las vacantes sin cubrir
+async function autoAsignarTodas(){
+  if(!dbLoaded){ toast('wa','Sin datos','Sincronizá la base de datos primero.'); return; }
+  const vacantes=(DB.licencias||[]).filter(l=>
+    l.genera_vacante && !l.suplente_id && l.estado!=='cancelada'
+  );
+  if(!vacantes.length){
+    toast('ok','Sin vacantes pendientes','Todas las licencias con vacante ya tienen suplente asignado.');
+    return;
+  }
+  const btn=document.getElementById('btnAutoAsignar');
+  if(btn){ btn.disabled=true; btn.textContent='⟳ Asignando...'; }
+  let asignados=0, sinCandidato=0;
+  // Rastrear asignaciones hechas en este loop (DB.turnos aún no refleja los nuevos)
+  const loopAssigned=new Map(); // supId -> [{from, to}]
+  for(const lic of vacantes){
+    const from=new Date(lic.fecha_desde+'T12:00:00');
+    const to=new Date(lic.fecha_hasta+'T12:00:00');
+    const candidatos=DB.suplentes
+      .filter(s=>s.activo!==false)
+      .filter(s=>{
+        // Conflicto en turnos ya existentes en BD
+        const dbConflict=DB.turnos.some(t=>{
+          if(t.funcionario_id!==s.id) return false;
+          const td=new Date(t.fecha+'T12:00:00');
+          return td>=from && td<=to && isW(t.codigo);
+        });
+        if(dbConflict) return false;
+        // Conflicto con asignaciones ya hechas en este mismo loop
+        const loopRanges=loopAssigned.get(s.id)||[];
+        return !loopRanges.some(r=>r.from<=to && r.to>=from);
+      })
+      .map(s=>({...s, _score:scoreSuplente(s,lic)}))
+      .sort((a,b)=>b._score-a._score);
+    if(candidatos.length){
+      const best=candidatos[0];
+      await _asignarSuplenteLicSilent(lic.id, best.id, fNombre(best));
+      if(!loopAssigned.has(best.id)) loopAssigned.set(best.id,[]);
+      loopAssigned.get(best.id).push({from,to});
+      asignados++;
+    } else {
+      sinCandidato++;
+    }
+  }
+  if(btn){ btn.disabled=false; btn.textContent='🤖 Auto-asignar todas'; }
+  renderLics();
+  renderCobertura();
+  const msg=sinCandidato?` · ${sinCandidato} sin candidato disponible`:'';
+  toast('ok',`${asignados} suplente${asignados!==1?'s':''} asignado${asignados!==1?'s':''}`,
+    `${vacantes.length} vacante${vacantes.length!==1?'s':''} procesada${vacantes.length!==1?'s':''}${msg}`);
+}
+
 function renderLics(){
   const body=document.getElementById('licBody');if(!body)return;
+  // Mostrar/ocultar botón auto-asignar según rol y vacantes pendientes
+  const btnAA=document.getElementById('btnAutoAsignar');
+  if(btnAA){
+    const isSupervisor=['admin','supervisor'].includes(cRole);
+    const hayVacantes=(DB.licencias||[]).some(l=>l.genera_vacante&&!l.suplente_id&&l.estado!=='cancelada');
+    btnAA.style.display=isSupervisor&&hayVacantes?'':'none';
+  }
   const today=new Date().toISOString().slice(0,10);
   const fmtDate = d=>{ try{ return new Date(d+'T12:00:00').toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}); }catch(e){return d||'—';} };
 
@@ -1422,7 +1835,7 @@ function renderLAR(){
   const body=document.getElementById('larBody');if(!body)return;
   if(dbLoaded && DB.funcionarios.length){
     const years=getAvailableMonthsGlobal().map(m=>m.year);
-    const year=years.length?Math.max(...years):2026;
+    const year=years.length?Math.max(...years):new Date().getFullYear();
     const byFunc=new Map();
     DB.funcionarios.forEach(f=>{
       byFunc.set(String(f.id),{
@@ -1459,19 +1872,7 @@ function renderLAR(){
     }).join('');
     return;
   }
-  const lar=[
-    {n:'K. ACOSTA',sec:'POLI MAÑANA',total:20,m:[11,9,0,0,0,0,0,0,0,0,0,0]},
-    {n:'C. MAGALLANES',sec:'POLI MAÑANA',total:20,m:[12,0,8,0,0,0,0,0,0,0,0,0]},
-    {n:'F. CANTERO',sec:'ECONOMATO',total:25,m:[25,0,0,0,0,0,0,0,0,0,0,0]},
-    {n:'N. OJEDA',sec:'CPB',total:20,m:[0,0,0,20,0,0,0,0,0,0,0,0]},
-    {n:'M. PEREIRA',sec:'OBSERVACIÓN',total:20,m:[0,0,0,0,10,10,0,0,0,0,0,0]},
-  ];
-  body.innerHTML=lar.map(l=>{
-    const used=l.m.reduce((a,b)=>a+b,0);const saldo=l.total-used;
-    return `<tr><td><strong>${l.n}</strong></td><td style="font-size:11px">${l.sec}</td><td class="mn">${l.total}</td>
-    ${l.m.map(v=>`<td class="mn" style="color:${v>0?'var(--green)':'var(--t3)'}">${v||'—'}</td>`).join('')}
-    <td class="mn" style="color:${saldo>0?'var(--green)':'var(--red)'};font-weight:700">${saldo}</td></tr>`;
-  }).join('');
+  body.innerHTML=`<tr><td colspan="15" style="text-align:center;padding:20px;color:var(--t2)">Sin datos de licencias LAR disponibles. Sincronizá la base de datos.</td></tr>`;
 }
 
 function resetLicForm(){
@@ -1557,14 +1958,14 @@ function checkLicOverlapPreview(){
   const conflict=hasLicOverlap(r.emp.id,desde,hasta);
   if(conflict){
     warn.style.display='block';
-    warn.innerHTML=`⚠ Solapamiento detectado con licencia <strong>${conflict.tipo}</strong> (${conflict.fecha_desde} a ${conflict.fecha_hasta}).`;
+    warn.innerHTML=`⚠ Solapamiento detectado con licencia <strong>${esc(conflict.tipo)}</strong> (${esc(conflict.fecha_desde)} a ${esc(conflict.fecha_hasta)}).`;
     return;
   }
   warn.style.display='block';
   warn.style.background='var(--bdim)';
   warn.style.border='1px solid rgba(61,127,255,.25)';
   warn.style.color='var(--blue)';
-  warn.innerHTML=`ℹ️ No se detecta solapamiento para <strong>${tipo}</strong> en el período seleccionado.`;
+  warn.innerHTML=`ℹ️ No se detecta solapamiento para <strong>${esc(tipo)}</strong> en el período seleccionado.`;
 }
 
 function onLicEmpInputChange(){
@@ -1710,72 +2111,119 @@ function renderTrades(){
 
   const isSuperAdmin=['admin','supervisor'].includes(cRole);
   const myName=cUser?.name||'';
+  const myFuncId=String(getCurrFuncionario()?.id||'');
 
   const dbRows=(DB.cambios||[]).map(c=>{
     const sol=c.solicitante?fNombre(c.solicitante):(getNameByFuncionarioId(c.solicitante_id)||'—');
     const rec=c.receptor?fNombre(c.receptor):(getNameByFuncionarioId(c.receptor_id)||'—');
     return {
-      id:c.id||null,
-      source:'db',
+      id:c.id||null, source:'db',
       estado:c.estado||'pendiente',
       date:c.created_at?new Date(c.created_at).toLocaleDateString('es-UY'):'—',
       sol, rec,
+      solicitante_id: String(c.solicitante_id||''),
+      receptor_id:    String(c.receptor_id||''),
       tc:`${c.turno_cede||'?'} · ${c.fecha_cede||'?'}`,
       tr:`${c.turno_recibe||'?'} · ${c.fecha_recibe||'?'}`,
     };
   });
   const localRows=(!dbLoaded?(MY_CAMBIOS||[]):[]).map((t,idx)=>({
-    id:null,
-    source:'local',
-    localIdx:idx,
-    estado:t.estado||'pendiente',
-    date:'Hoy',
-    sol:myName,
-    rec:t.con||'—',
-    tc:t.miTurno||'—',
-    tr:t.recibo||'—',
+    id:null, source:'local', localIdx:idx,
+    estado:t.estado||'pendiente', date:'Hoy',
+    sol:myName, rec:t.con||'—',
+    solicitante_id:'', receptor_id:'',
+    tc:t.miTurno||'—', tr:t.recibo||'—',
   }));
   const merged=[...dbRows,...localRows].filter(r=>{
-    const k=r.sol===myName || r.rec===myName;
-    return isSuperAdmin ? true : k;
+    const involucrado = r.sol===myName || r.rec===myName || r.solicitante_id===myFuncId || r.receptor_id===myFuncId;
+    return isSuperAdmin ? true : involucrado;
   });
 
-  const pending=merged.filter(r=>r.estado==='pendiente');
+  const stChip={aprobado:'cg',rechazado:'cr',rechazado_receptor:'cr',aceptado_receptor:'cb2',pendiente:'ca'};
+  const stLabel={aprobado:'Aprobado',rechazado:'Rechazado',rechazado_receptor:'Rechazado por receptor',aceptado_receptor:'Aceptado — pend. supervisora',pendiente:'Pendiente'};
+
   if(isSuperAdmin){
-    desc.textContent='Gestioná los cambios de turno del equipo. Los aprobados/rechazados se eliminan de pendientes.';
-    pTit.textContent='Pendientes de tu aprobación';
-    const pendDb=DB.cambios.filter(c=>c.estado==='pendiente');
-    pend.innerHTML=pending.map((t,i)=>{
-      const actionBtns=t.source==='db'
-        ? `<button class="btn bs sm" onclick="appTrd(${pendDb.findIndex(x=>String(x.id)===String(t.id))})">✓ Aprobar</button>
-           <button class="btn bd sm" onclick="rejTrd(${pendDb.findIndex(x=>String(x.id)===String(t.id))})">✕ Rechazar</button>`
-        : `<span class="chip cn">Demo local</span>`;
-      return `<div id="trd${i}" style="background:var(--card);border:1px solid var(--amber);border-radius:var(--r2);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px">
-        <div>
-          <div style="font-weight:700;font-size:13px;margin-bottom:3px">${t.sol} <span style="color:var(--t3)">—</span> ${t.rec}</div>
-          <div style="font-size:11px;color:var(--t2)">${t.tc} → ${t.tr}</div>
-          <div style="margin-top:5px"><span class="chip ca">Pendiente</span> <span style="font-size:10px;color:var(--t3);font-family:var(--ff-mono);margin-left:6px">${t.date}</span></div>
-        </div>
-        <div style="display:flex;gap:6px;flex-shrink:0">${actionBtns}</div>
-      </div>`;
-    }).join('') || '<div style="color:var(--t3);font-size:12px;padding:10px">Sin cambios pendientes</div>';
+    desc.textContent='Gestioná los cambios de turno del equipo.';
+    pTit.textContent='Cambios pendientes de gestión';
+    const readyList=DB.cambios.filter(c=>c.estado==='aceptado_receptor');
+    const waitList=DB.cambios.filter(c=>c.estado==='pendiente');
+    const parts=[];
+    if(readyList.length){
+      parts.push(`<div style="font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.7px;padding:6px 0 8px">✓ Listos para aprobar — receptor aceptó (${readyList.length})</div>`);
+      readyList.forEach(c=>{
+        const s=c.solicitante?fNombre(c.solicitante):getNameByFuncionarioId(c.solicitante_id)||'—';
+        const r=c.receptor?fNombre(c.receptor):getNameByFuncionarioId(c.receptor_id)||'—';
+        const cid=JSON.stringify(c.id);
+        parts.push(`<div style="background:var(--card);border:1px solid var(--green);border-radius:var(--r2);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px">
+          <div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:3px">${esc(s)} <span style="color:var(--t3)">↔</span> ${esc(r)}</div>
+            <div style="font-size:11px;color:var(--t2)">${esc(c.turno_cede||'?')} ${esc(c.fecha_cede||'?')} → ${esc(c.turno_recibe||'?')} ${esc(c.fecha_recibe||'?')}</div>
+            <div style="margin-top:5px"><span class="chip cb2">Receptor aceptó ✓</span> <span style="font-size:10px;color:var(--t3);margin-left:6px">${c.created_at?new Date(c.created_at).toLocaleDateString('es-UY'):'—'}</span></div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn bs sm" onclick="appTrd(${cid})">✓ Aprobar</button>
+            <button class="btn bd sm" onclick="rejTrd(${cid})">✕ Rechazar</button>
+          </div>
+        </div>`);
+      });
+    }
+    if(waitList.length){
+      parts.push(`<div style="font-size:11px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.7px;padding:${readyList.length?'14px':' 6px'} 0 8px">⏳ Esperando respuesta del receptor (${waitList.length})</div>`);
+      waitList.forEach(c=>{
+        const s=c.solicitante?fNombre(c.solicitante):getNameByFuncionarioId(c.solicitante_id)||'—';
+        const r=c.receptor?fNombre(c.receptor):getNameByFuncionarioId(c.receptor_id)||'—';
+        const cid=JSON.stringify(c.id);
+        parts.push(`<div style="background:var(--card);border:1px solid var(--b);border-radius:var(--r2);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px">
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:12px;margin-bottom:2px">${esc(s)} → ${esc(r)}</div>
+            <div style="font-size:11px;color:var(--t2)">${esc(c.turno_cede||'?')} ${esc(c.fecha_cede||'?')} → ${esc(c.turno_recibe||'?')} ${esc(c.fecha_recibe||'?')}</div>
+            <div style="margin-top:4px"><span class="chip ca">Esperando al receptor</span></div>
+          </div>
+          <div style="flex-shrink:0">
+            <button class="btn bd sm" onclick="rejTrd(${cid})">✕ Cancelar</button>
+          </div>
+        </div>`);
+      });
+    }
+    pend.innerHTML=parts.length
+      ? parts.join('')
+      : '<div style="color:var(--t3);font-size:12px;padding:10px">Sin cambios pendientes</div>';
   } else {
     desc.textContent='Tus cambios de turno solicitados y recibidos.';
-    pTit.textContent='Solicitudes pendientes';
-    pend.innerHTML=pending.map(t=>`
-      <div style="background:var(--card);border:1px solid var(--cyan);border-radius:var(--r2);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px">
-        <div>
-          <div style="font-weight:700;font-size:13px;margin-bottom:3px">${t.sol===myName?'Solicitaste a':'Te solicita'} ${t.sol===myName?t.rec:t.sol}</div>
-          <div style="font-size:11px;color:var(--t2);margin-top:4px">${t.tc} → ${t.tr}</div>
-          <div style="margin-top:5px"><span class="chip ca">Pendiente</span></div>
+    pTit.textContent='Solicitudes activas';
+    const active=merged.filter(r=>['pendiente','aceptado_receptor','rechazado_receptor'].includes(r.estado));
+    pend.innerHTML=active.map((t,i)=>{
+      const esReceptor = t.rec===myName || t.receptor_id===myFuncId;
+      const esSolicitante = t.sol===myName || t.solicitante_id===myFuncId;
+      const otro = esReceptor ? t.sol : t.rec;
+      let badge='';
+      let actions='';
+      if(t.estado==='pendiente' && esReceptor){
+        badge=`<span class="chip ca">🔔 Te solicitan un cambio</span>`;
+        actions=t.source==='db' && t.id
+          ? `<button class="btn bs sm" onclick="acceptReceptor('${t.id}')">✓ Aceptar</button>
+             <button class="btn bd sm" onclick="rejectReceptor('${t.id}')">✕ Rechazar</button>`
+          : `<button class="btn bs sm" onclick="acceptMyCambio(${i})">✓ Aceptar</button>
+             <button class="btn bd sm" onclick="rejectMyCambio(${i})">✕ Rechazar</button>`;
+      } else if(t.estado==='pendiente' && esSolicitante){
+        badge=`<span class="chip ca">⏳ Esperando respuesta de ${otro}</span>`;
+      } else if(t.estado==='aceptado_receptor'){
+        badge=`<span class="chip cb2">✓ ${esReceptor?'Aceptaste':'Receptor aceptó'} — pend. supervisora</span>`;
+      } else if(t.estado==='rechazado_receptor'){
+        badge=`<span class="chip cr">${esReceptor?'Rechazaste esta solicitud':'Receptor rechazó la solicitud'}</span>`;
+      }
+      return `<div id="trd${i}" style="background:var(--card);border:1px solid ${t.estado==='pendiente'&&esReceptor?'var(--blue)':'var(--b)'};border-radius:var(--r2);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:13px;margin-bottom:3px">${esReceptor?`${t.sol} te solicita cambio`:`Solicitaste a ${t.rec}`}</div>
+          <div style="font-size:11px;color:var(--t2);margin-top:2px">${t.tc} → ${t.tr}</div>
+          <div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap">${badge}</div>
         </div>
-      </div>
-    `).join('')||'<div style="color:var(--t3);font-size:12px;padding:10px">No tenés cambios pendientes</div>';
+        ${actions?`<div style="display:flex;gap:6px;flex-shrink:0">${actions}</div>`:''}
+      </div>`;
+    }).join('') || '<div style="color:var(--t3);font-size:12px;padding:10px">Sin solicitudes activas</div>';
   }
 
-  const stChip={aprobado:'cg',rechazado:'cr',aceptado:'cb2',pendiente:'ca'};
-  const stLabel={aprobado:'Aprobado',rechazado:'Rechazado',aceptado:'Aceptado',pendiente:'Pendiente'};
-  const histRows=merged.filter(r=>r.estado!=='pendiente');
+  const histRows=merged.filter(r=>['aprobado','rechazado','rechazado_receptor'].includes(r.estado));
   hist.innerHTML=histRows.map(h=>`
     <tr>
       <td class="mn">${h.date}</td>
@@ -1788,52 +2236,122 @@ function renderTrades(){
     </tr>`).join('') || '<tr><td colspan="7" style="color:var(--t3);padding:10px">Sin historial</td></tr>';
 }
 
-function acceptMyCambio(i){
-  const el=document.getElementById('trd'+i);
-  if(el){el.style.borderColor='var(--green)';el.querySelector('div:last-child').innerHTML='<span class="chip cg">✓ Aceptado — pasa a supervisora</span>';}
-  toast('in','Cambio aceptado','Pasa ahora a aprobación de supervisora.');
-}
-function rejectMyCambio(i){
-  const el=document.getElementById('trd'+i);
-  if(el){el.style.borderColor='var(--red)';el.querySelector('div:last-child').innerHTML='<span class="chip cr">✕ Rechazado</span>';}
-  toast('wa','Cambio rechazado','Se notificó al solicitante.');
-}
-
-async function appTrd(i){
-  const pending = DB.cambios.filter(c=>c.estado==='pendiente');
-  const item = pending[i];
-  if(!item) return;
+async function appTrd(id){
+  const item = DB.cambios.find(c=>c.id===id);
+  if(!item){ toast('er','Error','Cambio no encontrado'); return; }
+  const solNm = item.solicitante ? fNombre(item.solicitante) : getNameByFuncionarioId(item.solicitante_id)||'Solicitante';
+  const recNm = item.receptor   ? fNombre(item.receptor)   : getNameByFuncionarioId(item.receptor_id)||'Receptor';
   if(sb){
     await updateCambio(item.id, 'aprobado');
+    // Swap turnos en BD
+    if(item.solicitante_id && item.receptor_id && item.fecha_cede && item.fecha_recibe){
+      await saveTurnosBatch([
+        {funcionario_id:item.solicitante_id, fecha:item.fecha_cede,   codigo:'LXC',               nota:'Cambio turno — cede'},
+        {funcionario_id:item.receptor_id,    fecha:item.fecha_cede,   codigo:item.turno_cede||'M', nota:'Cambio turno — recibe'},
+        {funcionario_id:item.receptor_id,    fecha:item.fecha_recibe, codigo:'LXC',               nota:'Cambio turno — cede'},
+        {funcionario_id:item.solicitante_id, fecha:item.fecha_recibe, codigo:item.turno_recibe||'M',nota:'Cambio turno — recibe'},
+      ]);
+    }
+    await createAlerta('ok', '✅ Cambio de turno aprobado',
+      `Tu cambio con ${recNm} (${item.turno_cede||'?'} ${item.fecha_cede} ↔ ${item.turno_recibe||'?'} ${item.fecha_recibe}) fue aprobado por supervisora.`,
+      item.solicitante_id);
+    await createAlerta('ok', '✅ Cambio de turno aprobado',
+      `El cambio solicitado por ${solNm} fue aprobado. Ahora trabajás ${item.turno_cede||'?'} el ${item.fecha_cede}.`,
+      item.receptor_id);
   } else {
     item.estado='aprobado';
   }
   refreshTradeBadge();
   renderTrades();
   renderAlerts();
-  renderDashAlerts();
+  renderDashAlerts(); renderDashboard();
   renderCal();
-  toast('ok','Cambio aprobado','Movido al historial. Ambos funcionarios notificados.');
+  toast('ok','Cambio aprobado','Turnos intercambiados en el sistema. Ambos funcionarios notificados.');
 }
-async function rejTrd(i){
-  const pending=DB.cambios.filter(c=>c.estado==='pendiente');
-  const item = pending[i];
-  if(!item) return;
+
+async function rejTrd(id){
+  const item = DB.cambios.find(c=>c.id===id);
+  if(!item){ toast('er','Error','Cambio no encontrado'); return; }
+  const solNm = item.solicitante ? fNombre(item.solicitante) : getNameByFuncionarioId(item.solicitante_id)||'Solicitante';
+  const recNm = item.receptor   ? fNombre(item.receptor)   : getNameByFuncionarioId(item.receptor_id)||'Receptor';
   if(sb){
-    await updateCambio(item.id,'rechazado');
+    await updateCambio(item.id, 'rechazado');
+    await createAlerta('warning', '❌ Cambio rechazado por supervisora',
+      `Tu solicitud de cambio con ${recNm} fue rechazada.`, item.solicitante_id);
+    await createAlerta('warning', '❌ Cambio rechazado por supervisora',
+      `El cambio solicitado por ${solNm} fue rechazado por supervisora.`, item.receptor_id);
   } else {
     item.estado='rechazado';
   }
   refreshTradeBadge();
   renderTrades();
   renderAlerts();
-  renderDashAlerts();
+  renderDashAlerts(); renderDashboard();
   renderCal();
-  toast('wa','Cambio rechazado','Movido al historial. Funcionarios notificados.');
+  toast('wa','Cambio rechazado','Funcionarios notificados.');
+}
+
+// Receptor acepta la solicitud → pasa a supervisora
+async function acceptReceptor(cambioId){
+  if(!sb){ toast('wa','Sin conexión','Requiere base de datos.'); return; }
+  await updateCambio(cambioId, 'aceptado_receptor');
+  const cambio = DB.cambios.find(c=>c.id===cambioId);
+  if(cambio){
+    const solNm = cambio.solicitante ? fNombre(cambio.solicitante) : getNameByFuncionarioId(cambio.solicitante_id)||'Solicitante';
+    const recNm = cambio.receptor   ? fNombre(cambio.receptor)   : getNameByFuncionarioId(cambio.receptor_id)||'Receptor';
+    await createAlerta('ok', '✅ Tu cambio fue aceptado',
+      `${recNm} aceptó tu solicitud. Queda pendiente de aprobación de supervisora.`,
+      cambio.solicitante_id);
+    for(const supId of getSupervisorFuncionarioIds()){
+      await createAlerta('info', '🔄 Cambio listo para aprobar',
+        `${solNm} ↔ ${recNm} — ambos de acuerdo. ${cambio.turno_cede||'?'} ${cambio.fecha_cede} ↔ ${cambio.turno_recibe||'?'} ${cambio.fecha_recibe}`,
+        supId);
+    }
+  }
+  refreshTradeBadge();
+  renderTrades();
+  renderAlerts();
+  renderDashAlerts(); renderDashboard();
+  toast('ok','Cambio aceptado','La supervisora recibió la solicitud para aprobar.');
+}
+
+// Receptor rechaza la solicitud
+async function rejectReceptor(cambioId){
+  if(!sb){ toast('wa','Sin conexión','Requiere base de datos.'); return; }
+  await updateCambio(cambioId, 'rechazado_receptor');
+  const cambio = DB.cambios.find(c=>c.id===cambioId);
+  if(cambio){
+    const recNm = cambio.receptor ? fNombre(cambio.receptor) : getNameByFuncionarioId(cambio.receptor_id)||'Receptor';
+    await createAlerta('warning', '❌ Tu cambio fue rechazado',
+      `${recNm} rechazó tu solicitud de cambio de turno.`, cambio.solicitante_id);
+  }
+  refreshTradeBadge();
+  renderTrades();
+  renderAlerts();
+  renderDashAlerts(); renderDashboard();
+  toast('wa','Cambio rechazado','El solicitante fue notificado.');
+}
+
+// Demo aceptar/rechazar (sin BD)
+function acceptMyCambio(i){
+  const el=document.getElementById('trd'+i);
+  if(el){el.style.borderColor='var(--green)';el.querySelector('div:last-child').innerHTML='<span class="chip cg">✓ Aceptado — pend. supervisora</span>';}
+  toast('ok','Cambio aceptado','Pasa a aprobación de supervisora.');
+}
+function rejectMyCambio(i){
+  const el=document.getElementById('trd'+i);
+  if(el){el.style.borderColor='var(--red)';el.querySelector('div:last-child').innerHTML='<span class="chip cr">✕ Rechazado</span>';}
+  toast('wa','Cambio rechazado','Se notificó al solicitante.');
 }
 function refreshTradeBadge(){
-  const cnt=DB.cambios.filter(c=>c.estado==='pendiente').length;
-  document.getElementById('tradeBadge').textContent=cnt||'';
+  const myFuncId = String(getCurrFuncionario()?.id||'');
+  let cnt = 0;
+  if(['admin','supervisor'].includes(cRole)){
+    cnt = DB.cambios.filter(c=>c.estado==='aceptado_receptor').length;
+  } else {
+    cnt = DB.cambios.filter(c=>c.estado==='pendiente' && String(c.receptor_id||'')===myFuncId).length;
+  }
+  document.getElementById('tradeBadge').textContent = cnt||'';
 }
 
 // ........................................................
@@ -1848,13 +2366,16 @@ function renderAlerts(){
     if(['admin','supervisor'].includes(cRole)){
       // 7ª guardia: verificar días CONSECUTIVOS (no total mensual)
       DB.funcionarios.forEach(f=>{
-        const wk=DB.turnos.filter(t=>t.funcionario_id===f.id&&t.codigo&&!skip.has(t.codigo)).map(t=>t.fecha).sort();
-        let maxC=wk.length?1:0,cur=1;
+        const _hoy2=new Date().toISOString().slice(0,10);
+        const _desde2=new Date(Date.now()-45*86400000).toISOString().slice(0,10);
+        const _hace3b=new Date(Date.now()-3*86400000).toISOString().slice(0,10);
+        const wk=DB.turnos.filter(t=>t.funcionario_id===f.id&&t.codigo&&!skip.has(t.codigo)&&t.fecha>=_desde2).map(t=>t.fecha).sort();
+        let maxC=wk.length?1:0,cur=1,maxEnd2=wk[0]||'';
         for(let i=1;i<wk.length;i++){
           const diff=Math.round((new Date(wk[i]+'T12:00:00')-new Date(wk[i-1]+'T12:00:00'))/86400000);
-          cur=diff===1?cur+1:1;if(cur>maxC)maxC=cur;
+          cur=diff===1?cur+1:1;if(cur>maxC){maxC=cur;maxEnd2=wk[i];}
         }
-        if(maxC>=7) items.push({t:'cr2',ic:'🚨',
+        if(maxC>=7&&maxEnd2>=_hace3b) items.push({t:'cr2',ic:'🚨',
           title:`7ª Guardia consecutiva — ${fNombre(f)} (${f.sector?.nombre||''})`,
           desc:`${maxC} días seguidos sin descanso · genera horas extra obligatorias`,
           meta:f.clinica?.nombre||'',
@@ -1862,23 +2383,33 @@ function renderAlerts(){
         });
       });
       // Vacantes sin suplente — agrupadas
-      const vacsSinCub=DB.licencias.filter(l=>l.genera_vacante&&!l.suplente_id&&['activa','pendiente'].includes(l.estado));
+      const hoy2=new Date().toISOString().slice(0,10);
+      const _planKeys2=new Set((GENS||[]).map(g=>getGeneratedMonthKey(g)).filter(Boolean));
+      const vacsSinCub=DB.licencias.filter(l=>{
+        if(!l.genera_vacante||l.suplente_id||!['activa','pendiente'].includes(l.estado)) return false;
+        if((l.fecha_hasta||'')<hoy2) return false;
+        if(_planKeys2.size===0) return true;
+        const licMes=(l.fecha_desde||'').slice(0,7);
+        const activa=l.fecha_desde<=hoy2&&l.fecha_hasta>=hoy2;
+        return activa||_planKeys2.has(licMes);
+      });
       if(vacsSinCub.length) items.push({t:'wa',ic:'⚠️',
         title:`${vacsSinCub.length} vacante${vacsSinCub.length>1?'s':''} sin suplente`,
         desc:vacsSinCub.slice(0,3).map(l=>`${l.funcionario?fNombre(l.funcionario):'—'} · ${l.tipo} · ${l.fecha_desde}`).join(' · '),
         meta:'Sin suplente asignado',
         btn:`<button class="btn bp xs" onclick="go('licenses')">Asignar</button>`
       });
-      // Cambios pendientes de aprobación
-      const pCambios=DB.cambios.filter(x=>x.estado==='pendiente');
+      // Cambios aceptados por receptor — requieren aprobación supervisor
+      const pCambios=DB.cambios.filter(x=>x.estado==='aceptado_receptor');
       if(pCambios.length) items.push({t:'wa',ic:'🔄',
-        title:`${pCambios.length} cambio${pCambios.length>1?'s':''} pendiente${pCambios.length>1?'s':''} de aprobación`,
+        title:`${pCambios.length} cambio${pCambios.length>1?'s':''} listo${pCambios.length>1?'s':''} para aprobar`,
         desc:pCambios.slice(0,3).map(x=>`${x.solicitante?fNombre(x.solicitante):'—'} — ${x.receptor?fNombre(x.receptor):'—'}`).join(' · '),
-        meta:'Requieren tu aprobación',
+        meta:'Ambas partes aceptaron — requieren tu aprobación final',
         btn:`<button class="btn bp xs" onclick="go('trades')">Ver cambios</button>`
       });
       // Licencias pendientes
-      const pLics=DB.licencias.filter(l=>l.estado==='pendiente');
+      const _hoyP=new Date().toISOString().slice(0,10);
+      const pLics=DB.licencias.filter(l=>l.estado==='pendiente'&&(l.fecha_hasta||'')>=_hoyP);
       if(pLics.length) items.push({t:'in',ic:'📋',
         title:`${pLics.length} licencia${pLics.length>1?'s':''} pendiente${pLics.length>1?'s':''} de aprobación`,
         desc:pLics.map(l=>l.funcionario?fNombre(l.funcionario):'—').slice(0,3).join(', '),
@@ -1886,23 +2417,34 @@ function renderAlerts(){
         btn:`<button class="btn bp xs" onclick="go('licenses')">Ver</button>`
       });
     } else {
-      // Enfermería: solo sus propios cambios pendientes
+      // Enfermería: cambios donde participa (como receptor o solicitante)
+      const myFuncId2=String(getCurrFuncionario()?.id||'');
       const myNm=cUser?.name||'';
-      const myCambios=DB.cambios.filter(x=>x.estado==='pendiente'&&(
-        (x.solicitante&&fNombre(x.solicitante)===myNm)||
-        (x.receptor&&fNombre(x.receptor)===myNm)
-      ));
-      myCambios.forEach(x=>{
-        const esReceptor=x.receptor&&fNombre(x.receptor)===myNm;
+      // Incoming: soy receptor y está pendiente → botón para ir a aceptar/rechazar
+      const incoming=DB.cambios.filter(x=>x.estado==='pendiente'&&String(x.receptor_id||'')===myFuncId2);
+      incoming.forEach(x=>{
+        items.push({t:'wa',ic:'🔄',
+          title:'Te proponen un cambio de turno',
+          desc:`${x.solicitante?fNombre(x.solicitante):'—'} solicita: ${x.turno_cede||'?'} ${x.fecha_cede||''} ↔ ${x.turno_recibe||'?'} ${x.fecha_recibe||''}`,
+          meta:'Requiere tu aceptación',
+          btn:`<button class="btn bp xs" onclick="go('trades')">Responder</button>`
+        });
+      });
+      // Outgoing: mis solicitudes en curso
+      const outgoing=DB.cambios.filter(x=>['pendiente','aceptado_receptor'].includes(x.estado||'')&&String(x.solicitante_id||'')===myFuncId2);
+      outgoing.forEach(x=>{
+        const lbl=x.estado==='aceptado_receptor'?'Aceptado — pend. aprobación':'Pendiente de aceptación';
         items.push({t:'in',ic:'🔄',
-          title:esReceptor?'Te proponen un cambio de turno':'Tu cambio pendiente de aprobación',
-          desc:`Con ${esReceptor?fNombre(x.solicitante):fNombre(x.receptor)} · ${x.turno_cede||'?'} — ${x.turno_recibe||'?'}`,
-          meta:'Esperando respuesta',btn:''
+          title:`Tu solicitud: ${lbl}`,
+          desc:`Con ${x.receptor?fNombre(x.receptor):'—'} · ${x.turno_cede||'?'} ${x.fecha_cede||''} ↔ ${x.turno_recibe||'?'} ${x.fecha_recibe||''}`,
+          meta:'',btn:''
         });
       });
     }
-    // DB alerts (from alertas table)
-    DB.alertas.filter(a=>!a.leida).forEach(a=>{
+    // DB alerts (from alertas table) — personales o broadcast
+    const myFuncId3=String(getCurrFuncionario()?.id||'');
+    const esSupAdm=['admin','supervisor'].includes(cRole);
+    DB.alertas.filter(a=>!a.leida&&(!a.funcionario_id||String(a.funcionario_id)===myFuncId3)&&(esSupAdm||!String(a.tipo||'').startsWith('ingreso_'))).forEach(a=>{
       items.push({
         t:a.tipo==='critica'?'cr2':a.tipo==='warning'?'wa':a.tipo==='ok'?'ok':'in',
         ic:a.tipo==='critica'?'🚨':a.tipo==='warning'?'⚠️':'ℹ️',
@@ -1926,9 +2468,7 @@ function renderAlerts(){
 }
 
 // My license modal for nurse (doesn't go to full licenses view)
-let MY_LICS = [
-  {tipo:'LE', dias:'03/01 (1 día)', estado:'aprobada', chip:'cg'},
-];
+let MY_LICS = [];
 
 function openMyLicModal(){
   const existing=document.getElementById('myLicOv');
@@ -1950,8 +2490,8 @@ function openMyLicModal(){
           <option value="DXF">DXF — Día por feriado</option>
         </select>
       </div>
-      <div class="fr"><div class="fg"><label>Desde</label><input id="myLicDesde" type="date" value="2026-01-25" style="width:100%;background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:9px;border-radius:var(--r);font-size:12.5px"></div>
-      <div class="fg"><label>Hasta</label><input id="myLicHasta" type="date" value="2026-01-25" style="width:100%;background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:9px;border-radius:var(--r);font-size:12.5px"></div></div>
+      <div class="fr"><div class="fg"><label>Desde</label><input id="myLicDesde" type="date" value="${new Date().toISOString().slice(0,10)}" style="width:100%;background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:9px;border-radius:var(--r);font-size:12.5px"></div>
+      <div class="fg"><label>Hasta</label><input id="myLicHasta" type="date" value="${new Date().toISOString().slice(0,10)}" style="width:100%;background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:9px;border-radius:var(--r);font-size:12.5px"></div></div>
       <div class="fg"><label>Observaciones</label><input id="myLicObs" type="text" placeholder="Motivo o notas..." style="width:100%;background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:9px;border-radius:var(--r);font-size:12.5px"></div>
     </div>
     <div class="mf">
@@ -2068,7 +2608,7 @@ async function confirmAssign(sector, fecha){
         await saveTurno(sub.id, d.toISOString().slice(0,10), code, null, nota||`Cubre vacante ${sector}`);
       }
     } else {
-      const dateStr = fecha.includes('-') ? fecha : `2026-01-${fecha.split('/')[0].padStart(2,'0')}`;
+      const dateStr = fecha.includes('-') ? fecha : `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${fecha.split('/')[0].padStart(2,'0')}`;
       await saveTurno(sub.id, dateStr, code, null, nota||`Cubre vacante ${sector}`);
     }
   }
@@ -2133,9 +2673,9 @@ function openAssignFromAlert(alertIdx, sector, fecha){
 
 function approveCambioFromAlert(alertIdx){
   dismissAlert(alertIdx);
-  const pending = DB.cambios.filter(c=>c.estado==='pendiente');
-  if(pending.length) appTrd(0);
-  else toast('ok','Cambio aprobado','');
+  const pending = DB.cambios.filter(c=>c.estado==='aceptado_receptor');
+  if(pending.length) appTrd(pending[0].id);
+  else toast('ok','Sin cambios listos para aprobar','Revisá la sección Cambios de Turno');
 }
 
 function confirmSeptimaFromAlert(alertIdx){
@@ -2149,6 +2689,10 @@ async function markRead(){
   const ALL_COUNTS = {admin:5, supervisor:4, nurse:3};
   const total = ALL_COUNTS[cRole]||5;
   for(let i=0;i<total;i++) DISMISSED_ALERTS.add(cRole+'_'+i);
+  // Dismiss all dashboard computed alerts
+  ['vac','chg'].forEach(k=>DISMISSED_DASH.add(k));
+  DB.funcionarios.forEach(f=>DISMISSED_DASH.add('7g_'+f.id));
+  renderDashAlerts(); renderDashboard();
   document.querySelectorAll('#alertsList .ai').forEach((el,i)=>{
     setTimeout(()=>{ el.style.animation='fadeOut .3s ease forwards'; setTimeout(()=>el.remove(),310); }, i*60);
   });
@@ -2166,37 +2710,29 @@ async function markRead(){
 // GENERATION STATE
 // ........................................................
 let GENS = [];
-function saveGENS(){ try{ localStorage.setItem('guardiapp_gens', JSON.stringify(GENS)); }catch(e){} }
+function saveGENS(){ /* no-op: generaciones persisted via Supabase */ }
 function loadGENS(){
-  try{
-    const s = localStorage.getItem('guardiapp_gens');
-    if(s){ const arr=JSON.parse(s); if(Array.isArray(arr)){ GENS.splice(0,GENS.length,...arr); return; } }
-  }catch(e){}
-  // default seed so UI is never empty on first load
-  GENS.splice(0, GENS.length, {id:1, mes:'Enero 2026', mesNum:1, anio:2026, func:47, alertas:2, estado:'aprobada', fecha:'01/01/2026'});
+  const rows = DB.generaciones || [];
+  GENS.splice(0, GENS.length, ...rows.map(g=>({
+    id:      g.id,
+    mes:     g.mes,
+    mesNum:  g.mes_num,
+    anio:    g.anio,
+    estado:  g.estado,
+    func:    g.func_count,
+    alertas: g.alertas_7,
+    fecha:   g.created_at ? new Date(g.created_at).toLocaleDateString('es-UY') : '—',
+  })));
 }
 loadGENS();
 
 // Current gen being built (not yet approved)
 let DRAFT_GEN = null;
 // License state (persists across re-renders)
-let LIC_DATA = [
-  {id:1, emp:'K. ACOSTA',    sec:'POLI MAÑANA', type:'LAR',  from:'2026-01-02',to:'2026-01-12',days:11,vac:false,sub:'—',   st:'active'},
-  {id:2, emp:'C. MAGALLANES',sec:'POLI MAÑANA', type:'LAR',  from:'2026-01-20',to:'2026-01-31',days:12,vac:false,sub:'—',   st:'active'},
-  {id:3, emp:'N. OJEDA',     sec:'CPB',          type:'CERT', from:'2026-01-02',to:'2026-01-08',days:7, vac:true, sub:'C. PEREZ', st:'covered'},
-  {id:4, emp:'L. FAGUNDEZ',  sec:'ECONOMATO',    type:'F',    from:'2026-01-18',to:'2026-01-18',days:1, vac:true, sub:'Sin asignar',st:'uncovered'},
-  {id:5, emp:'F. CANTERO',   sec:'ECONOMATO',    type:'LAR',  from:'2026-01-02',to:'2026-01-31',days:31,vac:false,sub:'—',   st:'active'},
-];
+let LIC_DATA = [];
 let _licIdCounter = 100;
 // Users state
-let USERS_DATA = [
-  {id:1, name:'Admin Sistema',  email:'admin@guardiapp.com',  role:'admin',      sector:'—',             last:'Hoy 09:00', active:true},
-  {id:2, name:'Laura Díaz',     email:'ldiaz@clinica.com',    role:'supervisor',  sector:'Todas',         last:'Hoy 08:30', active:true},
-  {id:3, name:'M. Hernández',   email:'mhernandez@clinica.com',role:'supervisor', sector:'Setiembre',     last:'Ayer 17:20',active:true},
-  {id:4, name:'N. Lombardo',    email:'nlombardo@clinica.com', role:'nurse',      sector:'POLI MAÑANA',   last:'Hoy 06:15', active:true},
-  {id:5, name:'M. Pereira',     email:'mpereira@clinica.com',  role:'nurse',      sector:'OBSERVACIÓN',   last:'Ayer 12:00',active:true},
-  {id:6, name:'C. Pérez',       email:'cperez@clinica.com',    role:'nurse',      sector:'Suplentes',     last:'18/01 21:00',active:true},
-];
+let USERS_DATA = [];
 // My cambios state (for nurse view)
 // Pending shift changes (for schedule grid refresh)
 let SHIFT_CHANGES = {}; // {empName_date: code}
@@ -2206,6 +2742,13 @@ function getShiftChange(emp, date){ return SHIFT_CHANGES[`${emp}_${date}`]||null
 let MY_CAMBIOS = [];
 // Alerts dismissed this session (survive re-renders)
 const DISMISSED_ALERTS = new Set();
+// Dashboard computed alerts dismissed this session
+const DISMISSED_DASH = new Set();
+function dismissDashAlert(key){
+  DISMISSED_DASH.add(key);
+  const el=document.getElementById('dai_'+key);
+  if(el){ el.style.animation='fadeOut .3s ease forwards'; setTimeout(()=>{ el.remove(); },310); }
+}
 
 function dismissAlert(alertIdx){
   DISMISSED_ALERTS.add(cRole+'_'+alertIdx);
@@ -2234,20 +2777,32 @@ function updateAlertBadge(){
 // GENERATION
 // ........................................................
 const GSTEPS=[
-  'Cargando regímenes y configuración de sectores',
-  'Aplicando licencias LAR planificadas para el mes',
-  'Asignando turnos según régimen por sector',
-  'Verificando 7ª guardia — calculando horas extra',
-  'Detectando vacantes (faltas, LAR sin cobertura)',
-  'Asignando suplentes por prioridad (antigüedad · cumplimiento · competencia)',
-  'Verificando conflictos y reglas de negocio',
-  'Generando alertas críticas para supervisoras',
-  'Enviando agendas por email (47 funcionarios)',
-  'Generando reporte RRHH y actualizando sistema',
+  'Cargar regímenes y licencias del mes',
+  'Generar turnos por patrón (fijos)',
+  'Detectar 7ª guardia consecutiva',
+  'Detectar vacantes sin cobertura',
+  'Sugerir y asignar suplentes automáticamente',
+  'Guardar en base de datos',
+  'Generar turnos de cobertura (suplentes)',
+  'Crear registro de generación',
 ];
+
+// Etiqueta de display para una generación — maneja mes como texto O como entero legacy
+function genLabel(g){
+  if(!g) return '—';
+  if(g.mes && isNaN(Number(g.mes))) return g.mes; // ya es texto "Mayo 2026"
+  const mo = g.mesNum || Number(g.mes);
+  const yr = g.anio;
+  if(mo && yr) return getMonthLabel(yr, mo-1);
+  return String(g.mes||'—');
+}
 
 function getGeneratedMonthKey(g){
   if(g?.anio && Number.isInteger(g?.mesNum)) return `${g.anio}-${String(g.mesNum).padStart(2,'0')}`;
+  // Fallback: mes almacenado como entero legacy
+  if(g?.anio && !isNaN(Number(g?.mes))){
+    return `${g.anio}-${String(Number(g.mes)).padStart(2,'0')}`;
+  }
   const p=parseMesLabel(g?.mes||'');
   if(!p) return null;
   return `${p.year}-${String(p.month+1).padStart(2,'0')}`;
@@ -2284,11 +2839,13 @@ function populateGenMesOptions(){
 }
 
 async function startGen(){
+  if(cRole !== 'admin'){ toast('wa','Sin permiso','Solo el administrador puede generar planillas'); return; }
   if(!dbLoaded || !DB.funcionarios.length){
     toast('wa','Sin datos','Sincronizá la base de datos primero.'); return;
   }
-  const mesVal=document.getElementById('genMes')?.value||'Marzo 2026';
-  const parsed=parseMesLabel(mesVal)||{year:2026,month:2};
+  const _now=new Date();
+  const mesVal=document.getElementById('genMes')?.value||`${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][_now.getMonth()]} ${_now.getFullYear()}`;
+  const parsed=parseMesLabel(mesVal)||{year:_now.getFullYear(),month:_now.getMonth()};
   if(GENS.find(g=>g.mes===mesVal&&g.estado!=='cancelada')){
     toast('wa','Ya existe','Este mes ya fue generado. Buscalo en el historial para validar.'); return;
   }
@@ -2299,48 +2856,27 @@ async function startGen(){
   const sd=document.getElementById('genSteps');
   sd.innerHTML=steps_gen.map((_,i)=>`<div class="genstep" id="gs${i}"><span class="gsic">○</span>${_}</div>`).join('');
 
-  const markStep=i=>{
+  const markStep=async i=>{
     if(i>0){const p=document.getElementById(`gs${i-1}`);if(p){p.className='genstep done';p.querySelector('.gsic').textContent='✓';}}
     const el=document.getElementById(`gs${i}`);
     if(el){el.className='genstep run';el.querySelector('.gsic').textContent='⟳';}
     document.getElementById('genStatus').textContent=(steps_gen[i]||'Procesando')+'...';
+    await new Promise(r=>setTimeout(r,30)); // yield to allow UI repaint
   };
 
   const {year,month}=parsed;
   const daysInMonth=new Date(Date.UTC(year,month+1,0)).getUTCDate();
-
-  function daysBetween(refStr,dateStr){
-    return Math.round((new Date(dateStr+'T12:00:00')-new Date(refStr+'T12:00:00'))/86400000);
-  }
-  function isWorkDay(patron,cicloRef,dateStr){
-    const wd=(new Date(dateStr+'T12:00:00').getUTCDay()+6)%7; // 0=Lun,6=Dom
-    if(patron==='4x1'){
-      if(!cicloRef) return wd<5;
-      const off=((daysBetween(cicloRef,dateStr)%5)+5)%5;
-      return off<4;
-    }
-    if(patron==='6x1'){
-      if(!cicloRef) return wd<6;
-      const off=((daysBetween(cicloRef,dateStr)%7)+7)%7;
-      return off<6;
-    }
-    if(patron==='LS') return wd<6;  // Lun-Sáb (Mon=0…Sat=5, excl Dom=6)
-    if(patron==='SD') return wd>=5; // Solo Sáb (5) y Dom (6)
-    if(patron==='36H') return true; // Flexible — siempre disponible, supervisor asigna
-    return wd<5; // LV: Lun-Vie (default)
-  }
-
-  markStep(0);
-  const records=[];
-  let alert7=0;
-  const chunkSize=Math.ceil(DB.funcionarios.length/6)||1;
-
   const primerDia=`${year}-${String(month+1).padStart(2,'0')}-01`;
-  let cmpCount=0;
-  for(let fi=0;fi<DB.funcionarios.length;fi++){
-    if(fi>0 && fi%chunkSize===0) markStep(Math.min(Math.floor(fi/chunkSize),5));
-    const f=DB.funcionarios[fi];
-    // Aplicar patron_historico si existe para este mes
+  const mesTo=`${year}-${String(month+1).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
+
+  // Step 0: Cargar regímenes y licencias
+  await markStep(0);
+  const records=[];
+  let alert7=0, cmpCount=0;
+
+  // Step 1: Generar turnos por patrón (fijos)
+  await markStep(1);
+  for(const f of DB.funcionarios){
     const ph=getPatronVigente(f.id, primerDia);
     const patron     =(ph?.patron)    ||f.patron    ||'LV';
     const cicloRef   =(ph?.ciclo_ref) ||f.ciclo_ref ||null;
@@ -2350,27 +2886,24 @@ async function startGen(){
     const turnoSab   =f.turno_sabado||null;
     const turnoDom   =f.turno_domingo||null;
     const sectorId   =f.sector_id||null;
-    // Birthday detection for this month
     const bdayDate=f.fecha_nacimiento?new Date(f.fecha_nacimiento+'T12:00:00'):null;
     const bdayDay=bdayDate&&bdayDate.getUTCMonth()===month?bdayDate.getUTCDate():null;
     const cycleLen=(patron==='4x1'?5:7);
     const cr=cicloRef?new Date(cicloRef+'T12:00:00'):null;
-    let consec=0; let bad7=false;
+    let consec=0, bad7=false;
     for(let d=1;d<=daysInMonth;d++){
       const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const lic=getLicenciaCodeForDate(f.id,dateStr);
       if(lic){consec=0;continue;}
       if(isWorkDay(patron,cicloRef,dateStr)){
-        const wd=(new Date(dateStr+'T12:00:00').getUTCDay()+6)%7; // 0=Lun,5=Sáb,6=Dom
-        const isSat=(wd===5);
-        const isSun=(wd===6);
+        const wd=(new Date(dateStr+'T12:00:00').getUTCDay()+6)%7;
+        const isSat=(wd===5), isSun=(wd===6);
         const isBday=(bdayDay!==null && d===bdayDay);
         let turnoCode;
         if(isBday){
           turnoCode='CMP'; cmpCount++;
         } else {
-          // Prioridad: turno_semana > turno_ciclo > turno_domingo > turno_sabado > turno_fijo
-          const isoWd=(isSun?7:wd+1); // 1=Lun ... 7=Dom
+          const isoWd=(isSun?7:wd+1);
           const semOverride=turnoSemana[String(isoWd)];
           if(semOverride){
             turnoCode=semOverride;
@@ -2395,41 +2928,98 @@ async function startGen(){
     if(bad7) alert7++;
   }
 
-  // Batch upsert in chunks of 500
-  markStep(6);
+  // Step 2: Detectar 7ª guardia consecutiva
+  await markStep(2);
+
+  // Step 3: Detectar vacantes sin cobertura
+  await markStep(3);
+  const vacantesSinSuplente=(DB.licencias||[]).filter(l=>
+    l.genera_vacante && !l.suplente_id &&
+    ['activa','pendiente'].includes(l.estado) &&
+    (l.fecha_hasta||'')>=primerDia && (l.fecha_desde||'')<=mesTo
+  );
+  document.getElementById('genStatus').textContent=
+    `Vacantes en el mes: ${vacantesSinSuplente.length} · Suplentes disponibles en BD: ${DB.suplentes.filter(s=>s.activo!==false).length}`;
+  await new Promise(r=>setTimeout(r,600));
+
+  // Step 4: Revisar y asignar suplentes
+  await markStep(4);
+  let autoAssignCount=0;
+  if(vacantesSinSuplente.length && DB.suplentes.filter(s=>s.activo!==false).length){
+    // Pausa la generación y muestra modal de revisión
+    document.getElementById('genStatus').textContent='Revisá las asignaciones de suplentes en el modal...';
+    const assignments=await _showSuplenteModal(vacantesSinSuplente, mesVal);
+    for(const {licId,supId,supNombre} of assignments){
+      await _asignarSuplenteLicSilent(licId, supId, supNombre);
+      autoAssignCount++;
+    }
+    document.getElementById('genStatus').textContent=
+      autoAssignCount?`${autoAssignCount} suplente${autoAssignCount>1?'s':''} asignado${autoAssignCount>1?'s':''}`:
+      'Sin suplentes asignados — podés asignarlos desde Licencias';
+    await new Promise(r=>setTimeout(r,400));
+  } else if(!vacantesSinSuplente.length){
+    document.getElementById('genStatus').textContent='Sin vacantes pendientes de cobertura en este mes';
+    await new Promise(r=>setTimeout(r,400));
+  } else {
+    document.getElementById('genStatus').textContent='Sin suplentes disponibles en BD para asignar';
+    await new Promise(r=>setTimeout(r,400));
+  }
+
+  // Step 5: Guardar en base de datos
+  await markStep(5);
   const BATCH=500;
   for(let i=0;i<records.length;i+=BATCH){
     const ok=await saveTurnosBatch(records.slice(i,i+BATCH));
     if(!ok) break;
   }
 
-  markStep(7);
-  // Generar turnos de cobertura para suplentes asignados a licencias de este mes
-  const mesFrom=primerDia;
-  const mesTo=`${year}-${String(month+1).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
+  // Step 6: Generar turnos de cobertura (suplentes)
+  await markStep(6);
   const licsConSuplente=(DB.licencias||[]).filter(l=>
     l.suplente_id && l.genera_vacante && l.estado!=='cancelada' &&
-    (l.fecha_desde||'')<=mesTo && (l.fecha_hasta||'')>=mesFrom
+    (l.fecha_desde||'')<=mesTo && (l.fecha_hasta||'')>=primerDia
   );
   let supCount=0;
   for(const lic of licsConSuplente) supCount+=await generateSuplenteTurnos(lic);
-  if(supCount) toast('ok','Suplentes generados',`${supCount} turnos de cobertura creados`);
+
+  // Step 7: Crear registro de generación
+  await markStep(7);
+  let genId=null;
+  if(sb){
+    const savedGen=await saveGeneracion({
+      mes:mesVal, mes_num:month+1, anio:year, estado:'borrador',
+      func_count:DB.funcionarios.length, alertas_7:alert7,
+      created_by:cUser?.name||''
+    });
+    genId=savedGen?.id||null;
+  }
 
   await new Promise(r=>setTimeout(r,300));
   for(let i=0;i<8;i++){const p=document.getElementById(`gs${i}`);if(p){p.className='genstep done';p.querySelector('.gsic').textContent='✓';}}
   document.getElementById('genRun').classList.add('gone');
   document.getElementById('genIdle').style.display='block';
 
-  DRAFT_GEN={id:Date.now(),mes:mesVal,mesNum:month+1,anio:year,
+  DRAFT_GEN={id:genId||Date.now(),mes:mesVal,mesNum:month+1,anio:year,
     func:DB.funcionarios.length,alertas:alert7,estado:'borrador',
     fecha:new Date().toLocaleDateString('es-UY')};
   GENS.unshift(DRAFT_GEN);
-  saveGENS();
   renderGenHistory();
   populateSendMes();
   populateGenMesOptions();
-  await loadDB();
-  toast('ok',`${mesVal} generado — ${records.length} turnos · ${alert7} alertas 7ª guardia${cmpCount?` · 🎂 ${cmpCount} cumpleaños`:''}`,
+  // Solo sincronizar con BD si el registro se persistió correctamente.
+  // Si saveGeneracion falló, conservar DRAFT_GEN en memoria para esta sesión.
+  if(genId){
+    await loadDB();
+    renderGenHistory();
+    ensureScheduleMonthSel();
+  } else if(sb){
+    // La persistencia falló — avisar y mantener estado local
+    toast('wa','Generación local solamente',
+      'El registro no se pudo guardar en BD. Corré el ALTER TABLE en Supabase y regenerá.');
+  }
+  const autoMsg=autoAssignCount?` · 🧑‍⚕️ ${autoAssignCount} suplente${autoAssignCount>1?'s':''} asignado${autoAssignCount>1?'s':''}`:'';
+  const supMsg=supCount?` · ${supCount} turnos cobertura`:'';
+  toast('ok',`${mesVal} generado — ${records.length} turnos · ${alert7} alertas 7ª guardia${cmpCount?` · 🎂 ${cmpCount} cumpleaños`:''}${autoMsg}${supMsg}`,
     'Revisá la planilla, editá si necesario, luego aprobá para enviar agendas.');
 }
 
@@ -2437,7 +3027,9 @@ function renderGenHistory(){
   const tbody = document.getElementById('genHistBody');
   if(!tbody) return;
   populateGenMesOptions();
-  tbody.innerHTML = GENS.map((g,i)=>{
+
+  // Filas de generaciones registradas
+  const genRows = GENS.map((g,i)=>{
     const stChip = {
       aprobada: '<span class="chip cg">Aprobada ✓</span>',
       borrador: '<span class="chip ca">Borrador — pendiente validación</span>',
@@ -2453,7 +3045,7 @@ function renderGenHistory(){
          <button class="btn bd xs" onclick="deleteGen(${i})" title="Eliminar esta generación y sus turnos">🗑</button>`;
     return `<tr>
       <td class="mn">${g.fecha}</td>
-      <td><strong>${g.mes}</strong></td>
+      <td><strong>${genLabel(g)}</strong></td>
       <td>Todas</td>
       <td>${g.func}</td>
       <td><span class="chip ${g.alertas>0?'ca':'cn'}">${g.alertas>0?g.alertas+' alertas':'Sin alertas'}</span></td>
@@ -2461,6 +3053,37 @@ function renderGenHistory(){
       <td style="display:flex;gap:5px">${actions}</td>
     </tr>`;
   }).join('');
+
+  // Meses huérfanos: tienen turnos en DB pero sin registro en generaciones
+  const genMonthKeys = new Set((GENS||[]).map(g=>{
+    const k=getGeneratedMonthKey(g); if(!k) return null;
+    return k; // "yyyy-MM" 1-indexed
+  }).filter(Boolean));
+
+  const orphanKeys = new Set();
+  const orphanRows = [];
+  (DB.turnos||[]).forEach(t=>{
+    const d = new Date(`${t.fecha}T12:00:00`);
+    if(Number.isNaN(d.getTime())) return;
+    const y = d.getUTCFullYear(), m = d.getUTCMonth()+1;
+    const k = `${y}-${String(m).padStart(2,'0')}`;
+    if(!genMonthKeys.has(k) && !orphanKeys.has(k)){
+      orphanKeys.add(k);
+      const label = getMonthLabel(y, m-1);
+      orphanRows.push(`<tr style="opacity:.75">
+        <td class="mn">—</td>
+        <td><strong>${label}</strong></td>
+        <td>—</td><td>—</td>
+        <td>—</td>
+        <td><span class="chip" style="background:var(--bdim);color:var(--t2)">Turnos huérfanos</span></td>
+        <td style="display:flex;gap:5px">
+          <button class="btn bd xs" onclick="deleteOrphanMonth('${k}')" title="Borrar estos turnos de BD">🗑 Limpiar</button>
+        </td>
+      </tr>`);
+    }
+  });
+
+  tbody.innerHTML = genRows + orphanRows.join('');
 }
 
 function updSendSel(){
@@ -2478,7 +3101,7 @@ function populateSendMes(){
   if(!sel) return;
   sel.innerHTML='<option value="">Seleccioná una generación aprobada...</option>'+
     GENS.map((g,i)=>`<option value="${i}" ${g.estado!=='aprobada'?'disabled':''}>
-      ${g.mes} ${g.estado==='aprobada'?'✓':g.estado==='borrador'?'(pendiente validación)':'(cancelada)'}
+      ${genLabel(g)} ${g.estado==='aprobada'?'✓':g.estado==='borrador'?'(pendiente validación)':'(cancelada)'}
     </option>`).join('');
 }
 
@@ -2533,7 +3156,7 @@ if(!window.__scheduleResizeBound){
 // ........................................................
 function previewEmail(){
   const dbEmp=getCurrFuncionario();
-  const ym=MY_AGENDA_CTX||{year:2026,month:0};
+  const ym=MY_AGENDA_CTX||SCHED_CTX;
   const sched=getUserSched(dbEmp?.id, ym.year, ym.month);
   const sector=dbEmp?.sector?.nombre||cUser?.sector||'—';
   const clinic=dbEmp?.clinica?.nombre||cUser?.clinic||'—';
@@ -2551,8 +3174,8 @@ function previewEmail(){
 }
 
 function buildEpHTML(ctx){
-  const year=ctx?.year ?? 2026;
-  const month=ctx?.month ?? 0;
+  const year=ctx?.year ?? new Date().getFullYear();
+  const month=ctx?.month ?? new Date().getMonth();
   const sched=ctx?.sched || {};
   const firstDow=((new Date(Date.UTC(year,month,1)).getUTCDay()+6)%7);
   const daysInMonth=new Date(Date.UTC(year,month+1,0)).getUTCDate();
@@ -2648,11 +3271,11 @@ function buildEmailBody(empName, sector, clinic, guardias, hs){
   <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)">
     <div style="background:#1e3a6e;padding:20px 26px;display:flex;justify-content:space-between;align-items:center">
       <div style="font-family:Arial Black,sans-serif;font-weight:900;font-size:20px;color:#fff">+ GuardiaApp</div>
-      <div style="font-size:11px;color:#a0b4d0">Clínica ${clinic} · Enero 2026</div>
+      <div style="font-size:11px;color:#a0b4d0">Clínica ${clinic} · ${getMonthLabel(year,month)}</div>
     </div>
     <div style="padding:24px 26px">
       <p style="font-size:13px;color:#555;margin:0 0 6px">Hola <strong>${empName}</strong>,</p>
-      <h2 style="font-size:20px;color:#1a1a2e;margin:0 0 4px;font-family:Arial Black,sans-serif">Tu agenda para Enero 2026</h2>
+      <h2 style="font-size:20px;color:#1a1a2e;margin:0 0 4px;font-family:Arial Black,sans-serif">Tu agenda para ${getMonthLabel(year,month)}</h2>
       <p style="font-size:11px;color:#666;margin:0 0 16px">Sector: <strong>${sector}</strong> · Turno: <strong>Mañana</strong> · Régimen: <strong>36hs/sem · 6hs/día</strong></p>
       <table style="border-collapse:collapse;width:100%;margin:0 0 16px">
         <thead><tr>
@@ -2698,7 +3321,7 @@ async function sendEmail(){
   try{
     await emailjs.send(EJ.serviceId, EJ.templateId, {
       to_email: EJ.testEmail,
-      subject:  `GuardiaApp — Tu Agenda Enero 2026 · ${empData.sector}`,
+      subject:  `GuardiaApp — Tu Agenda ${getMonthLabel(MY_AGENDA_CTX.year,MY_AGENDA_CTX.month)} · ${empData.sector}`,
       message:  htmlBody,
     });
     closeM('emailM');
@@ -2721,7 +3344,7 @@ async function sendEmails(){
   try{
     await emailjs.send(EJ.serviceId, EJ.templateId,{
       to_email: EJ.testEmail,
-      subject: `GuardiaApp — Agenda Enero 2026 · ${e.sector} (DEMO)`,
+      subject: `GuardiaApp — Agenda ${getMonthLabel(MY_AGENDA_CTX.year,MY_AGENDA_CTX.month)} · ${e.sector}`,
       message: htmlBody,
     });
     toast('ok',`Email real enviado a ${EJ.testEmail}`,`Agenda de ${e.name} — En producción se enviaría a cada funcionario`);
@@ -2740,7 +3363,7 @@ async function sendEmails(){
 // ........................................................
 // HR REPORT
 // ........................................................
-let HR_CTX={year:2026,month:0,clinic:'all'};
+let HR_CTX=(()=>{const _n=new Date();return{year:_n.getFullYear(),month:_n.getMonth(),clinic:'all'};})();
 let HR_CACHE={rows:[],detailRows:[],subs:[]};
 
 function ensureHRFilters(){
@@ -2845,7 +3468,7 @@ function buildHRData(){
         const code=sc[d-1];
         if(!code) continue;
         detailRows.push({
-          date:`2026-01-${String(d).padStart(2,'0')}`,
+          date:`${HR_CTX.year}-${String(HR_CTX.month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,
           day:DAB[(3+d-1)%7],
           name:e.name,sector:e.sector,clinic:e.clinic,code,type:typeLabel(code),hs:isW(code)?e.hday:'—',
         });
@@ -2963,23 +3586,75 @@ function renderHRRank(){
 // ........................................................
 // USERS
 // ........................................................
+
+// Derivar username visible desde el email almacenado en usuarios
+function usernameFromEmail(email){
+  if(!email) return '—';
+  return email.endsWith('@guardiapp.app') ? email.replace('@guardiapp.app','') : email;
+}
+
+// Generar username a partir de un funcionario
+function genUsername(func){
+  const base=(func.apellido||'').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'');
+  const num=func.numero_funcionario||func.numero||'';
+  return num?`${base}_${num}`:base||`func_${String(func.id||'').slice(0,6)}`;
+}
+
+// Autollenar username cuando se elige un funcionario en el modal de usuario
+function onUEmpChange(){
+  const funcId=document.getElementById('uEmp')?.value;
+  const info=document.getElementById('uFuncInfo');
+  if(!funcId){
+    if(info) info.style.display='none';
+    return;
+  }
+  if(!dbLoaded) return;
+  const func=[...DB.funcionarios,...DB.suplentes,...(DB.funcionariosAll||[])].find(f=>String(f.id)===String(funcId));
+  if(!func) return;
+  // Auto-generar username si no fue editado manualmente
+  const uun=document.getElementById('uUsername');
+  if(uun&&!uun.dataset.manual) uun.value=genUsername(func);
+  // Mostrar info del funcionario (read-only)
+  if(info){
+    const rows=[
+      func.sector?.nombre   ? `<span><strong>Sector:</strong> ${esc(func.sector.nombre)}</span>` : '',
+      func.turno_fijo       ? `<span><strong>Turno:</strong> ${esc(func.turno_fijo)}</span>` : '',
+      func.telefono         ? `<span><strong>Tel:</strong> ${esc(func.telefono)}</span>` : '',
+      func.fecha_nacimiento ? `<span><strong>F.Nac:</strong> ${func.fecha_nacimiento}</span>` : '',
+      func.email            ? `<span><strong>Email:</strong> ${esc(func.email)}</span>` : '',
+    ].filter(Boolean);
+    info.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:10px">${rows.join('')}</div>`;
+    info.style.display='';
+  }
+}
+
 function renderUsers(){
   const body=document.getElementById('usersBody');if(!body)return;
-  // Use DB users if loaded, else local state
   const users = dbLoaded&&DB.usuarios.length
     ? DB.usuarios.map((u,i)=>({
-        id:u.id||i, name:u.funcionario?`${u.funcionario.apellido}, ${u.funcionario.nombre}`:u.email,
-        email:u.email, role:u.rol, sector:'—', last:u.ultimo_acceso?new Date(u.ultimo_acceso).toLocaleDateString('es-UY'):'Nunca', active:u.activo
+        id:u.id||i,
+        name:u.funcionario?`${u.funcionario.apellido}, ${u.funcionario.nombre}`:usernameFromEmail(u.email),
+        username:usernameFromEmail(u.email),
+        notifEmail:u.funcionario?.email||'',
+        role:u.rol,
+        sector:u.funcionario?.sector?.nombre||'—',
+        last:u.ultimo_acceso?new Date(u.ultimo_acceso).toLocaleDateString('es-UY'):'Nunca',
+        active:u.activo,
+        funcionario_id:u.funcionario_id,
+        telefono:u.funcionario?.telefono,
+        fnac:u.funcionario?.fecha_nacimiento,
       }))
     : USERS_DATA;
   const rChip={admin:'cb2',supervisor:'cg',nurse:'cp'};
   const rLabel={admin:'Admin/Gerencia',supervisor:'Supervisor',nurse:'Enfermería'};
   body.innerHTML=users.map((u,i)=>`<tr>
     <td><strong>${u.name}</strong></td>
-    <td class="mn" style="font-size:10px">${u.email}</td>
+    <td class="mn" style="font-family:var(--ff-mono);font-size:10px">${u.username}</td>
+    <td class="mn" style="font-size:10px;color:var(--t3)">${u.notifEmail||'—'}</td>
     <td><span class="chip ${rChip[u.role]||'cn'}">${rLabel[u.role]||u.role}</span></td>
     <td style="font-size:11px;color:var(--t2)">${u.sector}</td>
-    <td class="mn" style="font-size:10px;color:var(--t3)">${u.last}</td>
     <td><span class="dot ${u.active?'dg':'dn2'}"></span>${u.active?'Activo':'Inactivo'}</td>
     <td><div style="display:flex;gap:4px">
       <button class="btn bg xs" onclick="editUser(${i})">✏️</button>
@@ -2992,21 +3667,37 @@ function renderUsers(){
 
 function editUser(i){
   const users = dbLoaded&&DB.usuarios.length
-    ? DB.usuarios.map((u,idx)=>({id:u.id||idx, name:u.funcionario?`${u.funcionario.apellido}, ${u.funcionario.nombre}`:u.email, email:u.email, role:u.rol, active:u.activo, telefono:u.funcionario?.telefono, fnac:u.funcionario?.fecha_nacimiento}))
+    ? DB.usuarios.map((u,idx)=>({
+        id:u.id||idx,
+        name:u.funcionario?`${u.funcionario.apellido}, ${u.funcionario.nombre}`:usernameFromEmail(u.email),
+        username:usernameFromEmail(u.email),
+        notifEmail:u.funcionario?.email||'',
+        role:u.rol, active:u.activo,
+        telefono:u.funcionario?.telefono,
+        fnac:u.funcionario?.fecha_nacimiento,
+        funcionario_id:u.funcionario_id,
+      }))
     : USERS_DATA;
   const u=users[i]; if(!u) return;
-  // Reset modal
   window._editUserId = u.id;
   document.querySelector('#userM .mh-t').textContent = '✏️ Editar Usuario — '+u.name;
-  // Populate all fields
   const set = (id, val) => { const el=document.getElementById(id); if(el&&val!=null) el.value=val; };
-  set('newRole',  u.role||'nurse');
-  set('uEmail',   u.email||'');
-  set('uTel',     u.telefono||'');
-  set('uFnac',    u.fnac||'');
-  // Select funcionario
+  set('newRole',   u.role||'nurse');
+  set('uUsername', u.username||'');
+  // Marcar username como manual para no sobreescribir al seleccionar funcionario
+  const uun=document.getElementById('uUsername');
+  if(uun) uun.dataset.manual='1';
+  // Asegurar opciones frescas y restaurar funcionario asociado
+  populateSels();
   const uEmp=document.getElementById('uEmp');
-  if(uEmp){ const opt=[...uEmp.options].find(o=>o.text.includes(u.name.split(',')[0])||(u.name&&o.text===u.name)); if(opt) opt.selected=true; }
+  if(uEmp) uEmp.value = u.funcionario_id || '';
+  // Mostrar info del funcionario actual
+  onUEmpChange();
+  // Edit mode UI: hide password row, change button label
+  const passRow = document.getElementById('uPassRow');
+  if(passRow) passRow.style.display = 'none';
+  const saveBtn = document.getElementById('userMSaveBtn');
+  if(saveBtn) saveBtn.textContent = '💾 Guardar cambios';
   updPD();
   openM('userM');
 }
@@ -3057,6 +3748,8 @@ function openM(id){
   if(id==='userM' && !window._editUserId) { // fresh open: reset
     ['uEmail','uTel','uFnac'].forEach(elid=>{const el=document.getElementById(elid);if(el)el.value='';});
     const uEmpEl=document.getElementById('uEmp');if(uEmpEl){populateSels();uEmpEl.selectedIndex=0;}
+    const passRow=document.getElementById('uPassRow');if(passRow) passRow.style.display='';
+    const saveBtn=document.getElementById('userMSaveBtn');if(saveBtn) saveBtn.textContent='💾 Crear y Enviar Invitación';
   }
 }
 function openTradeWith(name){
@@ -3083,10 +3776,31 @@ function swTab(el,pane){
   if(pane==='tHRD') renderHRDet();
 }
 
+function _showPostApprovalPrompt(emp, year, month){
+  const existing=document.getElementById('postApprovalOv');
+  if(existing) existing.remove();
+  const ov=document.createElement('div');
+  ov.id='postApprovalOv'; ov.className='ov open';
+  ov.innerHTML=`<div class="modal" style="width:400px">
+    <div class="mh"><div class="mh-t">Planilla aprobada modificada</div><button class="mh-x" onclick="document.getElementById('postApprovalOv').remove()">✕</button></div>
+    <div class="mb">
+      <p style="font-size:13px;color:var(--t2);margin-bottom:16px">Se editó un turno en una planilla <strong style="color:var(--text)">aprobada</strong>.<br>¿Enviar agenda actualizada a <strong style="color:var(--text)">${fNombre(emp)}</strong>?</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn bg" onclick="document.getElementById('postApprovalOv').remove()">No, ahora no</button>
+        <button class="btn bp" onclick="
+          sendOneAgenda([...DB.funcionarios,...DB.suplentes].find(f=>String(f.id)==='${emp.id}'),${year},${month});
+          document.getElementById('postApprovalOv').remove();
+        ">Sí, enviar agenda</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+
 async function saveShift(){
   const empName = document.getElementById('smEmp')?.value;
   const code    = document.getElementById('smCode')?.value;
-  const fecha   = document.getElementById('smFecha')?.value||'2026-01-18';
+  const fecha   = document.getElementById('smFecha')?.value||new Date().toISOString().slice(0,10);
   if(!empName||!code){ toast('wa','Completá los campos','Seleccioná funcionario y código'); return; }
   const emp = [...DB.funcionarios,...DB.suplentes].find(f=>fNombre(f)===empName) ||
               EMPS.find(e=>e.name===empName);
@@ -3099,8 +3813,13 @@ async function saveShift(){
     const res = await saveTurno(emp.id, fecha, code, emp.sector_id||null, '');
     if(res){
       closeM('shiftM');
-      renderCal(); // refresh grid
+      renderCal();
       toast('ok','Turno guardado en BD',`${empName} · ${code} · ${fecha}`);
+      // Si la planilla del mes ya fue aprobada, preguntar si enviar agenda actualizada
+      const shiftYear=new Date(fecha+'T12:00:00').getFullYear();
+      const shiftMonth=new Date(fecha+'T12:00:00').getMonth()+1;
+      const genAp=(GENS||[]).find(g=>g.anio===shiftYear&&g.mesNum===shiftMonth&&g.estado==='aprobada');
+      if(genAp && emp?.id) _showPostApprovalPrompt(emp, shiftYear, shiftMonth);
       return;
     }
   }
@@ -3230,6 +3949,7 @@ function editEmpByName(name){
   const turnoEl=document.getElementById('eTurno'); if(turnoEl) turnoEl.value=tNorm;
   if(document.getElementById('eFnac')) document.getElementById('eFnac').value=dbEmp.fecha_nacimiento||'';
   if(document.getElementById('eFIng')) document.getElementById('eFIng').value=dbEmp.fecha_ingreso||'';
+  if(document.getElementById('eAlertDias')) document.getElementById('eAlertDias').value=dbEmp.alerta_ingreso_dias||45;
   if(document.getElementById('eTel')) document.getElementById('eTel').value=dbEmp.telefono||'';
   if(document.getElementById('eEmail')) document.getElementById('eEmail').value=dbEmp.email||'';
   if(document.getElementById('eHs')) document.getElementById('eHs').value=dbEmp.horas_semana||36;
@@ -3343,6 +4063,7 @@ async function getIdByNombre(table, nombre){
 }
 
 async function saveEmp(){
+  if(cRole !== 'admin'){ toast('wa','Sin permiso','Solo el administrador puede crear funcionarios'); return; }
   const raw   = document.getElementById('eApNom')?.value.trim();
   const email = document.getElementById('eEmail')?.value.trim();
   const tel   = document.getElementById('eTel')?.value.trim();
@@ -3420,39 +4141,66 @@ async function saveEmp(){
   closeM('empM');
 }
 async function saveUser(){
-  const rolSel    = document.getElementById('newRole')?.value||'nurse';
-  const emailInp  = document.getElementById('uEmail')?.value||'';
-  const funcSel   = document.querySelector('#userM select:first-of-type')?.value||'';
-  const isEdit    = !!window._editUserId;
+  const rolSel      = document.getElementById('newRole')?.value||'nurse';
+  const notifEmail  = (document.getElementById('uEmail')?.value||'').trim().toLowerCase();
+  const isEdit      = !!window._editUserId;
   if(isEdit){
-    // Update existing user
-    const idx = USERS_DATA.findIndex(u=>u.id===window._editUserId);
-    const tel   = document.getElementById('uTel')?.value||'';
-    const fnac  = document.getElementById('uFnac')?.value||'';
-    if(idx>=0){
-      USERS_DATA[idx].role  = rolSel;
-      USERS_DATA[idx].email = emailInp||USERS_DATA[idx].email;
-      USERS_DATA[idx].telefono = tel;
-      USERS_DATA[idx].fnac = fnac;
-    }
+    // En edición: actualizar rol + funcionario vinculado (username no cambia)
+    const newFuncId=document.getElementById('uEmp')?.value||null;
     if(sb){
-      await sb.from('usuarios').update({rol:rolSel}).eq('id',window._editUserId);
-      // Update funcionario fields if linked
-      const u=USERS_DATA[idx];
-      if(u?.funcionario_id) await sb.from('funcionarios').update({telefono:tel,fecha_nacimiento:fnac||null}).eq('id',u.funcionario_id);
+      await sb.from('usuarios').update({rol:rolSel, funcionario_id:newFuncId||null}).eq('id',window._editUserId);
+      // Sync local DB
+      const dbU=DB.usuarios.find(u=>u.id===window._editUserId);
+      if(dbU){ dbU.rol=rolSel; dbU.funcionario_id=newFuncId||null; }
     }
-    toast('ok','Usuario actualizado',`${funcSel||emailInp} · Rol: ${rolSel}`);
+    toast('ok','Usuario actualizado',`Rol: ${rolSel}${newFuncId?' · funcionario vinculado':''}`);
   } else {
-    // New user
-    const newU={id:Date.now(),name:funcSel||emailInp,email:emailInp,role:rolSel,sector:'—',last:'Nunca',active:true};
-    USERS_DATA.push(newU);
-    if(sb) await sb.from('usuarios').insert({email:emailInp,rol:rolSel,activo:true});
-    toast('ok','Usuario creado','Invitación enviada por email.');
+    // Nuevo usuario — requiere username
+    const usernameInp=(document.getElementById('uUsername')?.value||'').trim().toLowerCase();
+    if(!usernameInp){ toast('er','Usuario requerido','Generá o ingresá un nombre de usuario.'); return; }
+    const passInp=document.getElementById('uPass')?.value||'Clinica2026!';
+    if(passInp.length<6){ toast('er','Contraseña muy corta','Mínimo 6 caracteres.'); return; }
+    const funcId=document.getElementById('uEmp')?.value||'';
+    const funcIdClean=funcId||null;
+    // Construir email virtual para Supabase Auth
+    const authEmail=usernameInp.includes('@')?usernameInp:`${usernameInp}@guardiapp.app`;
+    if(sb){
+      // 1. Crear cuenta en Supabase Auth con email virtual
+      const {error:authErr}=await sb.auth.signUp({email:authEmail, password:passInp});
+      if(authErr){ toast('er','Error al crear usuario',authErr.message); return; }
+      // 2. Registrar en tabla usuarios
+      const {error:uErr}=await sb.from('usuarios').insert({
+        email:authEmail, rol:rolSel, activo:true, funcionario_id:funcIdClean
+      });
+      if(uErr){ toast('er','Error BD',uErr.message); return; }
+      // 3. Si hay email de notificaciones, guardar en funcionario
+      if(notifEmail&&funcIdClean){
+        await sb.from('funcionarios').update({email:notifEmail}).eq('id',funcIdClean);
+      }
+      // 4. Notificar credenciales
+      if(ejReady){
+        const rolesLabel={admin:'Admin / Gerencia',supervisor:'Supervisor',nurse:'Enfermería'};
+        await emailjs.send(EJ.serviceId,EJ.templateId,{
+          to_email:notifEmail||EJ.testEmail,
+          subject:`GuardiaApp — Acceso creado`,
+          message:`Se creó tu usuario en GuardiaApp:\n\nUsuario: ${usernameInp}\nContraseña: ${passInp}\nRol: ${rolesLabel[rolSel]||rolSel}\n\nIngresá con tu usuario (no el email) en la pantalla de login.`,
+        }).catch(()=>{});
+      }
+      toast('ok','Usuario creado',`${usernameInp} · ${rolSel}`);
+    } else {
+      toast('ok','Usuario creado','(modo demo)');
+    }
   }
   window._editUserId=null;
   document.querySelector('#userM .mh-t').textContent='🛡️ Nuevo Usuario del Sistema';
-  ['uEmail','uTel','uFnac'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const _pr=document.getElementById('uPassRow');if(_pr)_pr.style.display='';
+  const _sb=document.getElementById('userMSaveBtn');if(_sb)_sb.textContent='💾 Crear y Enviar Invitación';
+  ['uUsername','uEmail'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el){ el.value=''; delete el.dataset.manual; }
+  });
   const uEmpEl=document.getElementById('uEmp');if(uEmpEl)uEmpEl.selectedIndex=0;
+  const uFuncInfo=document.getElementById('uFuncInfo');if(uFuncInfo)uFuncInfo.style.display='none';
   renderUsers();
   closeM('userM');
 }
@@ -3608,7 +4356,7 @@ async function handleLicImport(evt){
         const al    = parseInt(row[b+1]);
         if(!desde || !al || isNaN(desde) || isNaN(al)) continue;
         if(desde < 1 || al > 31 || al < desde) continue;
-        const yr = 2026;
+        const yr = new Date().getFullYear();
         recs.push({
           funcionario_id: f.id,
           tipo: 'LAR',
@@ -3656,11 +4404,15 @@ async function submitTrade(){
     toast('wa','No disponible para intercambio',`Estado: ${candSel.label}. Elegí otro funcionario.`);
     return;
   }
-  const solicitante = [...DB.funcionarios,...DB.suplentes].find(f=>fNombre(f)===cUser.name)||DB.funcionarios[2];
+  const solicitante = [...DB.funcionarios,...DB.suplentes].find(f=>fNombre(f)===cUser.name);
   const rec = candSel?.id ? ([...DB.funcionarios,...DB.suplentes].find(f=>String(f.id)===String(candSel.id))||null)
                           : ([...DB.funcionarios,...DB.suplentes].find(f=>fNombre(f)===receptor)||null);
-  const solicitanteId = solicitante?.id||3;
-  const receptorId = rec?.id||11;
+  const solicitanteId = solicitante?.id;
+  const receptorId = rec?.id;
+  if(!solicitanteId || !receptorId){
+    toast('er','Error','No se encontró el funcionario. Verificá tu perfil vinculado.');
+    return;
+  }
 
   // Prevent duplicates in-session + loaded DB (same pair and same requested swap)
   const isDupLocal = (MY_CAMBIOS||[]).some(t=>
@@ -3693,6 +4445,9 @@ async function submitTrade(){
     };
     const res = await saveCambio(payload);
     if(res){
+      await createAlerta('info','🔄 Te proponen un cambio de turno',
+        `${cUser.name} te solicita cambio: ${miCod} ${miTurno} ↔ ${suCod} ${suFecha}`,
+        receptorId);
       closeM('tradeM');
       refreshTradeBadge();
       renderTrades();
@@ -3796,27 +4551,48 @@ function renderGenGrid(){
 
 function editGenCell(td, emp, day){
   const cur=td.querySelector('.sh')?.textContent||'';
-  td.innerHTML=`<input type="text" value="${cur}" maxlength="5"
-    style="width:44px;background:var(--bg3);border:1px solid var(--blue);color:var(--text);padding:2px 4px;border-radius:4px;font-size:10px;font-family:var(--ff-mono);text-align:center"
-    onblur="saveGenCell(this,'${emp}',${day})"
-    onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape'){this.value='${cur}';this.blur();}"
-    autofocus>`;
-  td.querySelector('input').select();
+  td.innerHTML='';
+  const inp=document.createElement('input');
+  inp.type='text'; inp.value=cur; inp.maxLength=5;
+  inp.style.cssText='width:44px;background:var(--bg3);border:1px solid var(--blue);color:var(--text);padding:2px 4px;border-radius:4px;font-size:10px;font-family:var(--ff-mono);text-align:center';
+  inp.addEventListener('blur',()=>saveGenCell(inp,emp,day));
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='Enter') inp.blur();
+    if(e.key==='Escape'){ inp.value=cur; inp.blur(); }
+  });
+  td.appendChild(inp);
+  inp.select();
 }
 
-function saveGenCell(inp, emp, day){
+async function saveGenCell(inp, emp, day){
   const val=inp.value.trim().toUpperCase();
   const td=inp.parentElement;
-  td.innerHTML=val?`<span class="sh ${shCls(val)}">${val}</span>`:'';
-  if(val) toast('in',`Editado: ${emp} · día ${day}`,'Cambio registrado. Aprobá para confirmar.');
+  td.innerHTML=val?`<span class="sh ${shCls(val)}">${esc(val)}</span>`:'';
+  if(!val) return;
+  const gi=window._currentGenIdx??0;
+  const gen=GENS[gi];
+  const year=gen?.anio||SCHED_CTX.year;
+  const month=gen?(gen.mesNum-1):SCHED_CTX.month;
+  const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  const empObj=[...DB.funcionarios,...DB.suplentes].find(f=>fNombre(f)===emp);
+  if(empObj?.id && sb){
+    await saveTurno(empObj.id, dateStr, val, empObj.sector_id||null, '');
+    toast('ok',`${emp} · día ${day} → ${val}`,'Guardado en BD');
+    if(gen?.estado==='aprobada') _showPostApprovalPrompt(empObj, year, month+1);
+  } else {
+    toast('in',`Editado: ${emp} · día ${day}`,'Cambio local — sincronizá para persistir');
+  }
 }
 
 async function approveGen(){
   closeM('genValidM');
   const gi = window._currentGenIdx??0;
   if(!GENS[gi]) return;
+  if(sb && GENS[gi].id){
+    const ok=await updateGeneracion(GENS[gi].id, {estado:'aprobada'});
+    if(!ok){ toast('er','Error','No se pudo aprobar la planilla en BD'); return; }
+  }
   GENS[gi].estado='aprobada';
-  saveGENS();
   renderGenHistory();
   populateSendMes();
   if(sb) await createAlerta('ok',`Planilla ${GENS[gi].mes} aprobada`,'Aprobada por '+cUser.name,null);
@@ -3826,90 +4602,306 @@ async function approveGen(){
 
 async function deleteGen(idx){
   const g = GENS[idx]; if(!g) return;
-  if(!confirm(`¿Eliminar la generación de ${g.mes}?\nSe borrarán todos los turnos del mes de la base de datos. Esta acción no se puede deshacer.`)) return;
-  if(sb){
-    const desde = `${g.anio}-${String(g.mesNum).padStart(2,'0')}-01`;
-    // Calcular el último día real del mes (evita error con meses de 28/29/30 días)
-    const lastDay = new Date(Date.UTC(g.anio, g.mesNum, 0)).getUTCDate();
-    const hasta   = `${g.anio}-${String(g.mesNum).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
-    const {error} = await sb.from('turnos').delete().gte('fecha', desde).lte('fecha', hasta);
-    if(error){ toast('er','Error al eliminar turnos', error.message); return; }
-    DB.turnos = DB.turnos.filter(t => t.fecha < desde || t.fecha > hasta);
+
+  // Resolver anio/mesNum con múltiples fallbacks
+  let yr = g.anio, mo = g.mesNum;
+  if(!yr || !mo){
+    // Fallback 1: parsear etiqueta texto "Enero 2026"
+    const p = parseMesLabel(g.mes||'');
+    if(p){ yr = p.year; mo = p.month + 1; }
+    // Fallback 2: mes almacenado como número entero en BD
+    else if(!isNaN(parseInt(g.mes)) && g.anio){
+      mo = parseInt(g.mes); yr = g.anio;
+    } else {
+      toast('er','Error','No se puede determinar el mes. Corré la migración SQL en Supabase.');
+      return;
+    }
   }
+
+  if(!confirm(`¿Eliminar la generación de ${genLabel(g)}?\nSe borrarán todos los turnos del mes de la base de datos. Esta acción no se puede deshacer.`)) return;
+
+  if(sb){
+    const mm     = String(mo).padStart(2,'0');
+    const desde  = `${yr}-${mm}-01`;
+    const lastDay= new Date(Date.UTC(yr, mo, 0)).getUTCDate();
+    const hasta  = `${yr}-${mm}-${String(lastDay).padStart(2,'0')}`;
+
+    // 1. Borrar turnos del mes
+    const {error:tErr} = await sb.from('turnos').delete().gte('fecha', desde).lte('fecha', hasta);
+    if(tErr){ toast('er','Error al eliminar turnos', tErr.message); return; }
+    DB.turnos = DB.turnos.filter(t => t.fecha < desde || t.fecha > hasta);
+
+    // 2. Borrar registro de generación
+    if(g.id){
+      const ok = await deleteGeneracion(g.id);
+      if(!ok){ toast('er','Error','No se pudo eliminar el registro de generación en BD'); return; }
+    }
+  }
+
   GENS.splice(idx, 1);
-  saveGENS();
   renderGenHistory();
   populateSendMes();
   populateGenMesOptions();
   buildDynamicData();
-  toast('ok', `${g.mes} eliminado`, 'Turnos borrados de la base de datos');
+  // Actualizar planificación para que el mes eliminado desaparezca del selector
+  ensureScheduleMonthSel();
+  renderCal();
+  renderDashAlerts(); renderDashboard();
+  toast('ok', `${genLabel(g)} eliminado`, 'Turnos y registro borrados de la base de datos');
+}
+
+async function deleteOrphanMonth(key){
+  // key = "yyyy-MM" (1-indexed)
+  const m = String(key||'').match(/^(\d{4})-(\d{2})$/);
+  if(!m) return;
+  const yr=parseInt(m[1],10), mo=parseInt(m[2],10);
+  const label = getMonthLabel(yr, mo-1);
+  if(!confirm(`¿Borrar todos los turnos huérfanos de ${label}?\nEstos turnos no tienen generación asociada. La acción no se puede deshacer.`)) return;
+  if(sb){
+    const desde = `${yr}-${String(mo).padStart(2,'0')}-01`;
+    const lastDay = new Date(Date.UTC(yr, mo, 0)).getUTCDate();
+    const hasta = `${yr}-${String(mo).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+    const {error} = await sb.from('turnos').delete().gte('fecha',desde).lte('fecha',hasta);
+    if(error){ toast('er','Error al eliminar turnos',error.message); return; }
+    DB.turnos = DB.turnos.filter(t=>t.fecha<desde||t.fecha>hasta);
+  }
+  buildDynamicData();
+  ensureScheduleMonthSel();
+  renderCal();
+  renderGenHistory();
+  renderDashAlerts(); renderDashboard();
+  toast('ok',`${label} limpiado`,'Turnos huérfanos borrados de la base de datos');
 }
 
 function downloadGenXLSX(genIdx){
   if(typeof XLSX==='undefined'){toast('er','Error','Librería XLSX no disponible.');return;}
-  const wb=XLSX.utils.book_new();
-  const days=Array.from({length:31},(_,i)=>i+1);
-  const header=['Funcionario','Sector',...days.map(d=>{const ab=DAB[(3+d-1)%7];return `${d}(${ab})`}),'Guardias','Hs.','7ª?'];
-  const rows=[header];
-  SGRP.forEach(grp=>{
-    rows.push([`== ${grp.sector} ==`,...Array(33).fill('')]);
-    grp.emps.forEach(emp=>{
-      const sc=WK[emp]||[];
-      const guardias=sc.filter(c=>isW(c)).length;
-      const is7=guardias>=7;
-      const emp_data=EMPS.find(e=>e.name===emp);
-      rows.push([emp,emp_data?.sector||grp.sector,...Array.from({length:31},(_,i)=>sc[i%7]||''),guardias,guardias*6,is7?'⚠ SÍ':'']);
+  const gi=genIdx??window._currentGenIdx??0;
+  const gen=GENS[gi];
+  if(!gen){toast('er','Error','Generación no encontrada.');return;}
+
+  const year=gen.anio, mi=gen.mesNum-1, mesLabel=gen.mes;
+  const nDays=new Date(year,mi+1,0).getDate();
+  const m2=String(mi+1).padStart(2,'0');
+  const mesFrom=`${year}-${m2}-01`, mesTo=`${year}-${m2}-${String(nDays).padStart(2,'0')}`;
+  const allDays=Array.from({length:nDays},(_,i)=>`${year}-${m2}-${String(i+1).padStart(2,'0')}`);
+  const DAY_ES=['LU','MA','MI','JU','VI','SÁ','DO'];
+
+  // ── Turno map from in-memory DB.turnos ─────────────────────────────────────
+  const tmap={};
+  (DB.turnos||[]).forEach(t=>{
+    if(t.fecha<mesFrom||t.fecha>mesTo) return;
+    if(!tmap[t.funcionario_id]) tmap[t.funcionario_id]={};
+    tmap[t.funcionario_id][t.fecha]=t.codigo;
+  });
+
+  // ── Licencia days per fijo ──────────────────────────────────────────────────
+  const licDays={};
+  (DB.licencias||[]).filter(l=>l.estado!=='cancelada'&&l.fecha_desde<=mesTo&&l.fecha_hasta>=mesFrom)
+    .forEach(lic=>{
+      const fid=lic.funcionario_id;
+      if(!licDays[fid]) licDays[fid]=new Set();
+      allDays.forEach(d=>{if(d>=lic.fecha_desde&&d<=lic.fecha_hasta) licDays[fid].add(d);});
+    });
+
+  // ── Suplente assignments + coverage summary ─────────────────────────────────
+  // Lógica idéntica al script Python export_marzo_excel.py / export_abril_excel.py
+  const supDays={};    // {supId: {fecha: turnoCode}}
+  const supWorkload={}; // {supId: Set<fecha>} — para calcular carga y detectar conflictos
+  const coverage=[];
+  // Disponibilidad desde DB (campo seteado por SQL migration).
+  // Equivale a get_disp() del Python: tarde-vespertino→['T','V'], mañana-tarde→['M','T'], total→['M','T','V','N']
+  const DISP_ALLOW={'tarde-vespertino':['T','V'],'mañana-tarde':['M','T'],'total':['M','T','V','N']};
+
+  (DB.licencias||[]).filter(l=>l.genera_vacante&&l.estado!=='cancelada'&&l.fecha_desde<=mesTo&&l.fecha_hasta>=mesFrom)
+    .forEach(lic=>{
+      const licList=allDays.filter(d=>d>=lic.fecha_desde&&d<=lic.fecha_hasta);
+      if(!licList.length) return;
+      const fijo=DB.funcionarios.find(f=>f.id===lic.funcionario_id)||{};
+      const fijoName=`${fijo.apellido||'?'} ${fijo.nombre||''}`.trim();
+      const fijoTurno=fijo.turno_fijo||'M'; // código base: 'M','T','V','N'
+      if(lic.suplente_id){
+        // Suplente ya asignado en DB — igual que Python: "if sid: for ds: sup_days[sid][ds]=fijo_turno"
+        if(!supDays[lic.suplente_id]) supDays[lic.suplente_id]={};
+        if(!supWorkload[lic.suplente_id]) supWorkload[lic.suplente_id]=new Set();
+        licList.forEach(d=>{supDays[lic.suplente_id][d]=fijoTurno; supWorkload[lic.suplente_id].add(d);});
+        const sup=DB.suplentes.find(s=>s.id===lic.suplente_id)||{};
+        coverage.push({fijoName,supName:`${sup.apellido||'?'} ${sup.nombre||''}`.trim(),days:licList,turno:fijoTurno,origen:'DB'});
+      } else {
+        // Auto-asignar — idéntico al Python:
+        // "if fijo_turno not in disp['turnos']: continue"  → match exacto sobre turno_fijo
+        // "if any(ds in sup_workload[sup_id] for ds in lic_days): continue"
+        // "score = -len(sup_workload[sup_id])"  → menor carga = mejor candidato
+        let best=null,bestScore=-Infinity;
+        DB.suplentes.forEach(sup=>{
+          const allow=DISP_ALLOW[sup.disponibilidad||'total']||['M','T','V','N'];
+          if(!allow.includes(fijoTurno)) return; // match exacto como Python
+          const wl=supWorkload[sup.id]||new Set();
+          if(licList.some(d=>wl.has(d))) return; // conflicto de días
+          const score=-(wl.size);
+          if(score>bestScore){bestScore=score;best=sup;}
+        });
+        if(best){
+          if(!supDays[best.id]) supDays[best.id]={};
+          if(!supWorkload[best.id]) supWorkload[best.id]=new Set();
+          licList.forEach(d=>{supDays[best.id][d]=fijoTurno; supWorkload[best.id].add(d);});
+          coverage.push({fijoName,supName:`${best.apellido||'?'} ${best.nombre||''}`.trim(),days:licList,turno:fijoTurno,origen:'AUTO'});
+        } else {
+          coverage.push({fijoName,supName:'??? SIN SUPLENTE',days:licList,turno:fijoTurno,origen:'NONE'});
+        }
+      }
+    });
+
+  // ── Group fijos by sector ────────────────────────────────────────────────────
+  // Orden idéntico al Python: sorted por (sector_label, apellido, nombre)
+  const secGroups={};
+  [...DB.funcionarios]
+    .sort((a,b)=>{
+      const sa=a.sector?.nombre||'Sin sector', sb=b.sector?.nombre||'Sin sector';
+      if(sa!==sb) return sa.localeCompare(sb);
+      const ap=(a.apellido||'').localeCompare(b.apellido||'');
+      if(ap!==0) return ap;
+      return (a.nombre||'').localeCompare(b.nombre||'');
+    })
+    .forEach(f=>{
+      const sn=f.sector?.nombre||'Sin sector';
+      if(!secGroups[sn]) secGroups[sn]=[];
+      secGroups[sn].push(f);
+    });
+  // sectores ya en orden porque los fijos se insertaron ordenados
+  const sortedSecs=Object.entries(secGroups);
+
+  // ── Style helpers ────────────────────────────────────────────────────────────
+  // HDR = azul oscuro (encabezado principal), HDR2 = azul medio (días de semana)
+  // Matches Python: FILL_HDR='2F5496', FILL_HDR2='4472C4'
+  const HDR='2F5496',HDR2='4472C4',SEP='DDEBF7',SAB='FFF9E6',DOM='FDE9E0';
+  const PAL=[['1F4E79','D6E4F7'],['375623','D8F0C8'],['843C0C','FCE8D8'],['4B2C8C','EAD9F7'],['7B2D00','FAD5B5'],['005757','C8EFEF']];
+  const TCOLORS={M:'BDD7EE',T:'FCE4D6',V:'E2EFDA',N:'D6DCE4',CMP:'FFD966',LIC:'D9D9D9',
+    MS:'BDD7EE',MC:'BDD7EE',MG:'BDD7EE',MO:'BDD7EE',MU:'BDD7EE',MD:'BDD7EE',I:'BDD7EE',
+    TS:'FCE4D6',TG:'FCE4D6',TO:'FCE4D6',TU:'FCE4D6',TD:'FCE4D6',RS:'FCE4D6',E:'FCE4D6',
+    NO:'EDE9FE',NU:'EDE9FE',VO:'ECFDF5',VU:'ECFDF5',VD:'ECFDF5',
+    LE:'FFEDD5',FI:'FEE2E2',CERT:'A7F3D0',BPS:'A7F3D0',BSE:'A7F3D0',LAR:'D1FAE5',LM:'D1FAE5'};
+  TCOLORS['TC']='FCE4D6'; // key 'TC' outside literal to avoid parse ambiguity with var name
+
+  function mk(v,bg,bold,center,white,italic){
+    const s={font:{bold:!!bold,italic:!!italic,size:9,color:{rgb:white?'FFFFFF':'1A1A1A'}},
+             alignment:{horizontal:center?'center':'left',vertical:'center',wrapText:true}};
+    if(bg) s.fill={fgColor:{rgb:bg}};
+    return {v:v===undefined||v===null?'':v, t:typeof v==='number'?'n':'s', s};
+  }
+  function dayC(code,ds){
+    const wd=(new Date(ds+'T12:00:00').getUTCDay()+6)%7; // 0=Mon,5=Sat,6=Sun
+    const wkBg=wd===5?SAB:wd===6?DOM:null;
+    if(!code){
+      const s={alignment:{horizontal:'center',vertical:'center'}};
+      if(wkBg) s.fill={fgColor:{rgb:wkBg}};
+      return {v:'',t:'s',s};
+    }
+    const bg=TCOLORS[code]||wkBg;
+    const s={font:{size:8},alignment:{horizontal:'center',vertical:'center'}};
+    if(bg) s.fill={fgColor:{rgb:bg}};
+    return {v:code,t:'s',s};
+  }
+  // Day header: weekdays=HDR2(4472C4), Sat=SAB, Sun=DOM — matches Python FILL_HDR2
+  function dayHdr(ds){
+    const wd=(new Date(ds+'T12:00:00').getUTCDay()+6)%7;
+    const dayNum=parseInt(ds.slice(-2));
+    const bg=wd===5?SAB:wd===6?DOM:HDR2;
+    const whiteText=wd<5; // white text on blue, black text on Sat/Sun tints
+    return {v:`${dayNum}\n${DAY_ES[wd]}`,t:'s',s:{fill:{fgColor:{rgb:bg}},font:{bold:true,color:{rgb:whiteText?'FFFFFF':'000000'},size:8},alignment:{horizontal:'center',vertical:'center',wrapText:true}}};
+  }
+
+  // ── Build rows ───────────────────────────────────────────────────────────────
+  const ncols=5+nDays;
+  const rows=[];
+  const mergeRows=[];
+  function addMerge(text,bg,bold,white){
+    mergeRows.push(rows.length);
+    rows.push([mk(text,bg,bold,false,white),...Array(ncols-1).fill(mk('',bg))]);
+  }
+
+  // Title: white background, blue bold text size 13 — matches Python FONT_TITLE
+  mergeRows.push(rows.length);
+  rows.push([{v:`PLANIFICACIÓN ${mesLabel.toUpperCase()}  —  MP ENFERMERÍA`,t:'s',s:{font:{bold:true,size:13,color:{rgb:'2F5496'}},alignment:{horizontal:'center',vertical:'center'}}},...Array(ncols-1).fill({v:'',t:'s'})]);
+
+  // Column header: NRO/NOMBRE/SECTOR/PAT/TF on HDR(2F5496), day cols on HDR2(4472C4)
+  rows.push([mk('NRO',HDR,true,true,true),mk('NOMBRE',HDR,true,false,true),mk('SECTOR',HDR,true,false,true),mk('PAT',HDR,true,true,true),mk('TF',HDR,true,true,true),...allDays.map(dayHdr)]);
+
+  // Fijos grouped by sector
+  sortedSecs.forEach(([sn,emps],si)=>{
+    const [hc,rc]=PAL[si%PAL.length];
+    addMerge(`  \u258c ${sn.toUpperCase()}  (${emps.length} empleados)`,hc,true,true);
+    emps.forEach((f,ei)=>{
+      const bg=ei%2===1?rc:null;
+      const licSet=licDays[f.id]||new Set();
+      rows.push([
+        mk(f.numero||'',bg,false,true),
+        mk(`${f.apellido||''}${f.nombre?', '+f.nombre:''}`,bg),
+        mk(sn,bg),
+        mk(f.patron||'',bg,false,true),
+        mk(f.turno_fijo||'',bg,false,true),
+        ...allDays.map(ds=>licSet.has(ds)
+          ?{v:'LIC',t:'s',s:{fill:{fgColor:{rgb:TCOLORS.LIC}},font:{size:8},alignment:{horizontal:'center',vertical:'center'}}}
+          :dayC(tmap[f.id]?.[ds]||'',ds))
+      ]);
     });
   });
+
+  // Suplentes section
+  rows.push(Array(ncols).fill({v:'',t:'s'}));
+  addMerge('  \u258c SUPLENTES ASIGNADOS',SEP,true,false);
+  rows.push([mk('',HDR,true,true,true),mk('SUPLENTE',HDR,true,false,true),mk('DISP.',HDR,true,true,true),mk('SEC',HDR,true,false,true),mk('',HDR,true,true,true),...allDays.map(dayHdr)]);
+
+  const DLABEL={'tarde-vespertino':'T/V','mañana-tarde':'M/T','total':'TOTAL'};
+  const supsConAsig=DB.suplentes.filter(s=>supDays[s.id]&&Object.keys(supDays[s.id]).length).sort((a,b)=>(a.apellido||'').localeCompare(b.apellido||''));
+  const supsSin=DB.suplentes.filter(s=>!supDays[s.id]||!Object.keys(supDays[s.id]).length).sort((a,b)=>(a.apellido||'').localeCompare(b.apellido||''));
+
+  supsConAsig.forEach(sup=>{
+    // COL layout matches Python: NRO='SUP' | NOMBRE | SECTOR=disp.label | PAT=sec | TF=primary_turno
+    const dispLabel=DLABEL[sup.disponibilidad]||'TOTAL';
+    const secLabel=sup.sector?.nombre||'-';
+    const DISP_TURNOS={'tarde-vespertino':['T','V'],'mañana-tarde':['M','T'],'total':['M','T','V','N']};
+    const primaryTurno=(DISP_TURNOS[sup.disponibilidad]||['M'])[0];
+    rows.push([
+      mk('SUP',null,false,true),
+      mk(`${sup.apellido||''}${sup.nombre?', '+sup.nombre:''}`,null),
+      mk(dispLabel,null,false,true),
+      mk(secLabel,null,false,false),
+      mk(primaryTurno,null,false,true),
+      ...allDays.map(ds=>dayC(supDays[sup.id]?.[ds]||'',ds))
+    ]);
+  });
+
+  if(supsSin.length){
+    // Matches Python: "Sin asignación en [Mes]: APELLIDO [T/V], ..."
+    const lista=supsSin.map(s=>`${s.apellido||''} [${DLABEL[s.disponibilidad]||'TOTAL'}]`).join(', ');
+    mergeRows.push(rows.length);
+    rows.push([{v:`  Sin asignación en ${mesLabel}: ${lista}`,t:'s',s:{fill:{fgColor:{rgb:'FFF9C4'}},font:{italic:true,size:9,color:{rgb:'595959'}},alignment:{horizontal:'left',vertical:'center'}}},...Array(ncols-1).fill(mk('','FFF9C4'))]);
+  }
+
+  // Coverage summary
+  if(coverage.length){
+    rows.push(Array(ncols).fill({v:'',t:'s'}));
+    addMerge('  \u258c RESUMEN DE COBERTURAS',SEP,true,false);
+    rows.push([mk('Fijo ausente',HDR,true,false,true),mk('Suplente asignado',HDR,true,false,true),mk('Turno',HDR,true,true,true),mk('Desde',HDR,true,true,true),mk('Hasta',HDR,true,true,true),mk('Origen',HDR,true,true,true)]);
+    coverage.forEach(({fijoName,supName,days,turno,origen})=>{
+      const bg=origen==='NONE'?'FFCCCC':origen==='AUTO'?'FFF9C4':null;
+      rows.push([mk(fijoName,bg),mk(supName,bg),mk(turno,bg,false,true),mk(days[0]||'',bg,false,true),mk(days[days.length-1]||'',bg,false,true),mk(origen,bg,false,true)]);
+    });
+  }
+
+  // ── Build sheet ──────────────────────────────────────────────────────────────
+  const wb=XLSX.utils.book_new();
   const ws=XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols']=[{wch:22},{wch:16},...Array(31).fill({wch:6}),{wch:9},{wch:6},{wch:6}];
-  // Column widths
-  ws['!cols']=[{wch:24},{wch:14},...Array(7).fill({wch:5}),{wch:8},{wch:6},{wch:6}];
-  // Style header row
-  const range=XLSX.utils.decode_range(ws['!ref']||'A1');
-  for(let C=range.s.c;C<=range.e.c;C++){
-    const addr=XLSX.utils.encode_cell({r:0,c:C});
-    if(!ws[addr]) continue;
-    ws[addr].s={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1E3A6E'}},alignment:{horizontal:'center'}};
-  }
-  // Color cells by shift code
-  const shiftColors={
-    M:'DBEAFE',MS:'DBEAFE',MC:'DBEAFE',MG:'DBEAFE',MO:'DBEAFE',MU:'DBEAFE',MD:'DBEAFE',I:'DBEAFE',
-    T:'FEF3C7',TS:'FEF3C7',TC:'FEF3C7',TG:'FEF3C7',TO:'FEF3C7',TU:'FEF3C7',TD:'FEF3C7',RS:'FEF3C7',E:'FEF3C7',ES:'FEF3C7',CWT:'FEF3C7',
-    NO:'EDE9FE',NU:'EDE9FE',
-    VO:'ECFDF5',VU:'ECFDF5',VD:'ECFDF5',V:'ECFDF5',
-    LAR:'D1FAE5',LM:'D1FAE5',
-    CERT:'A7F3D0',BPS:'A7F3D0',BSE:'A7F3D0',
-    NC:'FEE2E2',F:'FEE2E2',
-    LE:'FFEDD5',FI:'FFEDD5',
-    s7:'FCA5A5',
-  };
-  for(let R=1;R<=range.e.r;R++){
-    for(let C=2;C<=8;C++){
-      const addr=XLSX.utils.encode_cell({r:R,c:C});
-      if(!ws[addr]||!ws[addr].v) continue;
-      const code=String(ws[addr].v);
-      const bg=shiftColors[code]||(code.startsWith('==')?'F1F5F9':'FFFFFF');
-      ws[addr].s={fill:{fgColor:{rgb:bg}},font:{bold:code.startsWith('==')?true:false},alignment:{horizontal:'center'}};
-    }
-    // Name column
-    const nameCell=XLSX.utils.encode_cell({r:R,c:0});
-    if(ws[nameCell]) ws[nameCell].s={font:{bold:true}};
-  }
-  XLSX.utils.book_append_sheet(wb,ws,'Planilla');
-  // Alerts sheet with colors
-  const alertRows=[['FUNCIONARIO','ALERTA','DETALLE']];
-  alertRows.push(['M. PEREIRA','7ª Guardia','25 guardias este mes — 3 horas extra']);
-  alertRows.push(['D. TITO','7ª Guardia','25 guardias este mes — 3 horas extra']);
-  alertRows.push(['ECONOMATO','Vacante sin cubrir','18/01 — L. FAGUNDEZ falta imprevista']);
-  const wsA=XLSX.utils.aoa_to_sheet(alertRows);
-  wsA['!cols']=[{wch:22},{wch:16},{wch:40}];
-  ['A1','B1','C1'].forEach(addr=>{ if(wsA[addr]) wsA[addr].s={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'DC2626'}}}; });
-  XLSX.utils.book_append_sheet(wb,wsA,'Alertas');
-  const gi=genIdx??window._currentGenIdx??0;
-  const gm=(GENS[gi]?.mes||'Planilla').replace(/ /g,'_');
-  XLSX.writeFile(wb,`Planilla_${gm}.xlsx`);
-  toast('ok','Excel descargado',`Planilla_${gm}.xlsx`);
+  ws['!cols']=[{wch:6},{wch:24},{wch:16},{wch:5},{wch:4},...Array.from({length:nDays},()=>({wch:3.6}))];
+  ws['!rows']=rows.map((_,i)=>({hpt:i===0?20:i===1?28:14}));
+  ws['!merges']=mergeRows.map(ri=>({s:{r:ri,c:0},e:{r:ri,c:ncols-1}}));
+  ws['!freeze']={xSplit:5,ySplit:2};
+
+  const sheetName=mesLabel.replace(/ /g,'_').toUpperCase().slice(0,31);
+  XLSX.utils.book_append_sheet(wb,ws,sheetName);
+  const fname=`Planilla_${mesLabel.replace(/ /g,'_')}.xlsx`;
+  XLSX.writeFile(wb,fname);
+  toast('ok','Excel descargado',fname);
 }
 
 // ........................................................
@@ -3952,7 +4944,7 @@ function downloadXLSX(){
       if(!code) return;
       const d1=i+1;
       const ab=DAB[(3+i)%7];
-      d.push([`${d1.toString().padStart(2,'0')}/01/2026`,ab,code,isW(code)?'Trabajo':code==='LAR'?'LAR':code==='F'?'Falta':'Licencia',isW(code)?6:0,'']);
+      d.push([`${d1.toString().padStart(2,'0')}/${String(HR_CTX.month+1).padStart(2,'0')}/${HR_CTX.year}`,ab,code,isW(code)?'Trabajo':code==='LAR'?'LAR':code==='F'?'Falta':'Licencia',isW(code)?6:0,'']);
     });
     const ws=XLSX.utils.aoa_to_sheet(d);
     ws['!cols']=[{wch:14},{wch:5},{wch:9},{wch:14},{wch:6},{wch:30}];
@@ -3964,17 +4956,19 @@ function downloadXLSX(){
   const leg=[['CÓDIGO','NOMBRE','HORARIO','HS.'],['M','Mañana estándar','06:00—12:00',6],['TS','Tarde Setiembre','12:00—18:00',6],['NO','Noche Observación','00:00—06:00',6],['VO','Vespertino Obs.','18:00—24:00',6],['LAR','Lic. Anual Reglamentaria','—',0],['CERT','Certificación médica','—',0],['F','Falta Imprevista','—  Genera vacante',0]];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(leg),'LEYENDA');
 
-  XLSX.writeFile(wb,`RRHH_Enfermeria_Enero2026.xlsx`);
-  toast('ok','Excel descargado','RRHH_Enfermeria_Enero2026.xlsx — resumen por clínica + hoja por suplente');
+  const _hrLabel=getMonthLabel(HR_CTX.year,HR_CTX.month).replace(' ','_');
+  XLSX.writeFile(wb,`RRHH_Enfermeria_${_hrLabel}.xlsx`);
+  toast('ok','Excel descargado',`RRHH_Enfermeria_${_hrLabel}.xlsx — resumen por clínica + hoja por suplente`);
 }
 
 function expEmpXLSX(){
   if(typeof XLSX==='undefined'){toast('er','Error','Librería no disponible.');return;}
   const wb=XLSX.utils.book_new();
   const data=[['FUNCIONARIO','CLÍNICA','SECTOR','TURNO','GUARDIAS','HS/MES','EXTRAS','FALTAS','ESTADO']];
-  EMPS.forEach(e=>data.push([e.name,e.clinic,e.sector,e.shift,e.g,e.g*e.hday,e.extras||0,e.faltas||0,{active:'Activo',lar:'En LAR',cert:'CERT',absent:'Falta'}[e.status]||'—']));
+  DB.funcionarios.forEach(f=>data.push([fNombre(f),f.clinica?.nombre||'—',f.sector?.nombre||'—',f.turno||'—','—','—',0,0,'Activo']));
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(data),'Funcionarios');
-  XLSX.writeFile(wb,'Funcionarios_Enero2026.xlsx');
+  const _empLabel=getMonthLabel(HR_CTX.year,HR_CTX.month).replace(' ','_');
+  XLSX.writeFile(wb,`Funcionarios_${_empLabel}.xlsx`);
   toast('ok','Excel exportado','Listado de funcionarios descargado.');
 }
 
@@ -3985,7 +4979,7 @@ function toast(type,title,desc){
   const icons={ok:'✓',wa:'⚠️',er:'✕',in:'ℹ️'};
   const el=document.createElement('div');
   el.className=`toast ${type}`;
-  el.innerHTML=`<span style="font-size:14px;margin-top:1px">${icons[type]||'•'}</span><div style="flex:1"><div class="t-t">${title}</div>${desc?`<div class="t-d">${desc}</div>`:''}</div><button class="t-x" onclick="this.parentElement.remove()">✕</button>`;
+  el.innerHTML=`<span style="font-size:14px;margin-top:1px">${icons[type]||'•'}</span><div style="flex:1"><div class="t-t">${esc(title)}</div>${desc?`<div class="t-d">${esc(desc)}</div>`:''}</div><button class="t-x" onclick="this.parentElement.remove()">✕</button>`;
   document.getElementById('tbox').appendChild(el);
   setTimeout(()=>el.remove(),5000);
 }
@@ -3995,146 +4989,209 @@ function toast(type,title,desc){
 // NOTIFICACIONES
 // ........................................................
 
-function renderNotifications(){
+async function renderNotifications(){
   const el=document.getElementById('v-notifications');
   if(!el) return;
 
   const aprobadas=(GENS||[]).filter(g=>g.estado==='aprobada');
   const fijos=DB.funcionarios.filter(f=>f.activo!==false&&f.tipo!=='suplente').sort((a,b)=>fNombre(a).localeCompare(fNombre(b),'es'));
-  const mesesOpts=getAvailableMonthsGlobal().map(m=>`<option value="${m.year}-${String(m.month+1).padStart(2,'0')}">${getMonthLabel(m.year,m.month)}</option>`).join('');
+  const mesesOpts=aprobadas.map(g=>{
+    const v=`${g.anio}-${String(g.mesNum).padStart(2,'0')}`;
+    return `<option value="${v}">${g.mes}</option>`;
+  }).join('');
   const empOpts=fijos.map(f=>`<option value="${f.id}">${fNombre(f)} · ${f.sector?.nombre||'—'}</option>`).join('');
 
-  const historial=(DB.alertas||[]).filter(a=>a.tipo==='ok'&&(a.titulo||'').toLowerCase().includes('planilla')).slice(0,8);
+  // Historial: cargar desde Supabase independientemente del estado leida
+  let historial=[];
+  if(sb){
+    const {data}=await sb.from('alertas')
+      .select('id,tipo,titulo,descripcion,created_at,funcionario_id')
+      .in('tipo',['notif_agenda','notif_aviso'])
+      .order('created_at',{ascending:false})
+      .limit(12);
+    historial=data||[];
+  } else {
+    historial=(DB.alertas||[]).filter(a=>['notif_agenda','notif_aviso'].includes(a.tipo)).slice(0,12);
+  }
 
   el.innerHTML=`
-  <div style="max-width:900px">
+  <div style="max-width:900px;display:flex;flex-direction:column;gap:14px">
 
     <!-- Agendas mensuales -->
-    <div class="card" style="margin-bottom:16px">
-      <div class="ch"><div class="ct">📅 Agendas mensuales</div></div>
-      <div style="font-size:11px;color:var(--t3);margin-bottom:12px">Planillas aprobadas listas para enviar a los funcionarios.</div>
-      ${aprobadas.length ? aprobadas.map(g=>`
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--b);gap:12px">
-          <div>
-            <div style="font-size:13px;font-weight:600">${g.mes}</div>
-            <div style="font-size:11px;color:var(--t3)">${fijos.length} funcionarios · Aprobada ✓</div>
-          </div>
-          <div style="display:flex;gap:8px;flex-shrink:0">
-            <button class="btn bg sm" onclick="previewNotifAgenda(${JSON.stringify(g.mes)})">👁 Vista previa</button>
-            <button class="btn bp sm" onclick="sendAllAgendas(${JSON.stringify(g.mes)})">📨 Enviar todas</button>
-          </div>
-        </div>`).join('')
-      : '<div style="color:var(--t3);font-size:12px;padding:10px 0">No hay planillas aprobadas aún.</div>'}
-    </div>
-
-    <!-- Envío individual -->
-    <div class="card" style="margin-bottom:16px">
-      <div class="ch"><div class="ct">👤 Enviar agenda individual</div></div>
-      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding-top:4px">
-        <div class="fg" style="flex:2;min-width:180px;margin:0">
-          <label>Funcionario</label>
-          <select id="notifEmp" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">${empOpts}</select>
-        </div>
-        <div class="fg" style="flex:1;min-width:140px;margin:0">
-          <label>Mes</label>
-          <select id="notifMes" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">${mesesOpts||'<option>Sin meses</option>'}</select>
-        </div>
-        <button class="btn bp sm" style="flex-shrink:0;height:36px" onclick="sendIndividualAgenda()">📨 Enviar</button>
+    <div class="card">
+      <div class="ch">
+        <div class="ct">📅 Agendas mensuales</div>
+      </div>
+      <div class="cb">
+        <div style="font-size:11px;color:var(--t3);margin-bottom:14px">Planillas aprobadas listas para enviar a los funcionarios.</div>
+        ${aprobadas.length ? aprobadas.map(g=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--b);gap:12px">
+            <div>
+              <div style="font-size:13px;font-weight:600">${g.mes}</div>
+              <div style="font-size:11px;color:var(--t3);margin-top:2px">${fijos.length} funcionarios · <span style="color:var(--green)">Aprobada ✓</span></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-shrink:0">
+              <button class="btn bg sm" onclick="previewNotifAgenda('${g.anio}-${String(g.mesNum).padStart(2,'0')}')">👁 Vista previa</button>
+              <button class="btn bp sm" onclick="sendAllAgendas('${g.anio}-${String(g.mesNum).padStart(2,'0')}',this)">📨 Enviar todas</button>
+            </div>
+          </div>`).join('')
+        : '<div style="color:var(--t3);font-size:12px;padding:6px 0">No hay planillas aprobadas aún.</div>'}
       </div>
     </div>
 
-    <!-- Cambios de turno / avisos -->
-    <div class="card" style="margin-bottom:16px">
+    <!-- Envío individual -->
+    <div class="card">
+      <div class="ch"><div class="ct">👤 Enviar agenda individual</div></div>
+      <div class="cb">
+        <div class="fr" style="grid-template-columns:2fr 1fr">
+          <div class="fg">
+            <label>Funcionario</label>
+            <select id="notifEmp">${empOpts}</select>
+          </div>
+          <div class="fg">
+            <label>Mes</label>
+            <select id="notifMes">${mesesOpts||'<option>Sin meses aprobados</option>'}</select>
+          </div>
+        </div>
+        <button class="btn bp sm" onclick="sendIndividualAgenda()">📨 Enviar agenda</button>
+      </div>
+    </div>
+
+    <!-- Redactar aviso -->
+    <div class="card">
       <div class="ch"><div class="ct">📢 Redactar aviso</div></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;padding-top:4px">
-        <div class="fg" style="flex:1;min-width:160px;margin:0">
-          <label>Tipo</label>
-          <select id="notifTipo" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">
-            <option value="cambio">🔄 Cambio de turno</option>
-            <option value="aviso">📢 Aviso general</option>
-            <option value="recordatorio">🔔 Recordatorio</option>
-            <option value="agenda">📅 Actualización de agenda</option>
-          </select>
+      <div class="cb">
+        <div class="fr">
+          <div class="fg">
+            <label>Tipo</label>
+            <select id="notifTipo">
+              <option value="cambio">🔄 Cambio de turno</option>
+              <option value="aviso">📢 Aviso general</option>
+              <option value="recordatorio">🔔 Recordatorio</option>
+              <option value="agenda">📅 Actualización de agenda</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>Destinatarios</label>
+            <select id="notifDest">
+              <option value="all">Todos los funcionarios</option>
+              <option value="sector">Por sector (próximamente)</option>
+              <option value="individual">Individual (próximamente)</option>
+            </select>
+          </div>
         </div>
-        <div class="fg" style="flex:1;min-width:160px;margin:0">
-          <label>Destinatarios</label>
-          <select id="notifDest" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">
-            <option value="all">Todos los funcionarios</option>
-            <option value="sector">Por sector (en desarrollo)</option>
-            <option value="individual">Individual (en desarrollo)</option>
-          </select>
-        </div>
-        <div class="fg" style="flex:3;min-width:220px;margin:0">
+        <div class="fg">
           <label>Mensaje</label>
-          <input id="notifMsg" type="text" placeholder="Ej: El turno del sábado 15 se pasa a las 8:00..." style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:8px;border-radius:var(--r);font-size:12px;width:100%">
+          <input id="notifMsg" type="text" placeholder="Ej: El turno del sábado 15 se pasa a las 8:00...">
         </div>
-        <button class="btn bp sm" style="flex-shrink:0;height:36px;align-self:flex-end" onclick="sendCustomNotif()">📨 Enviar aviso</button>
+        <button class="btn bp sm" onclick="sendCustomNotif()">📨 Enviar aviso</button>
       </div>
     </div>
 
     <!-- Historial -->
     <div class="card">
       <div class="ch"><div class="ct">📋 Historial de notificaciones</div></div>
-      ${historial.length ? historial.map(a=>`
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--b);font-size:12px">
-          <div><strong>${a.titulo}</strong> · <span style="color:var(--t3)">${a.descripcion||''}</span></div>
-          <span style="font-size:10px;color:var(--t3)">${new Date(a.created_at).toLocaleDateString('es-UY')}</span>
-        </div>`).join('')
-      : '<div style="color:var(--t3);font-size:12px;padding:10px 0">Sin historial de envíos.</div>'}
+      <div class="cb">
+        ${historial.length ? historial.map(a=>`
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--b);gap:12px">
+            <div>
+              <div style="font-size:12px;font-weight:600">${a.titulo}</div>
+              <div style="font-size:11px;color:var(--t3);margin-top:2px">${a.descripcion||''}</div>
+            </div>
+            <span style="font-size:10px;color:var(--t3);white-space:nowrap;flex-shrink:0">${new Date(a.created_at).toLocaleDateString('es-UY')}</span>
+          </div>`).join('')
+        : '<div style="color:var(--t3);font-size:12px;padding:6px 0">Sin historial de envíos.</div>'}
+      </div>
     </div>
+
   </div>`;
 }
 
 function previewNotifAgenda(mes){
-  // Abrir la planilla en la sección de generación
-  go('generation');
-  toast('in',`Planilla ${mes}`,'Revisá el historial de generaciones');
+  const parts=mes.split('-').map(Number);
+  const y=parts[0], mNum=parts[1]||parts[0]; // handle both "2026-03" and label-based
+  const fijos=DB.funcionarios.filter(f=>f.activo!==false&&f.tipo!=='suplente');
+  if(!fijos.length){toast('wa','Sin funcionarios','No hay fijos activos');return;}
+  const f=fijos[0];
+  // Try to parse mes as YYYY-MM, fallback to current month
+  let yr=y, mo=mNum;
+  if(isNaN(yr)||isNaN(mo)){
+    const g=(GENS||[]).find(g2=>g2.mes===mes&&g2.estado==='aprobada');
+    yr=g?.anio||new Date().getFullYear();
+    mo=g?.mesNum||new Date().getMonth()+1;
+  }
+  const html=buildRealEmailBody(f,yr,mo);
+  const info=document.getElementById('notifPreviewInfo');
+  const body=document.getElementById('notifPreviewBody');
+  if(info) info.innerHTML=`Vista previa: <strong>${fNombre(f)}</strong> · Planilla ${yr}-${String(mo).padStart(2,'0')} · ${fijos.length} funcionarios en total`;
+  if(body){
+    body.innerHTML='';
+    const iframe=document.createElement('iframe');
+    iframe.style.cssText='width:100%;height:520px;border:none;display:block';
+    body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(html);
+    iframe.contentDocument.close();
+  }
+  openM('notifPreviewM');
 }
 
-async function sendAllAgendas(mes){
-  if(!ejReady){toast('wa','EmailJS no disponible','Verificá la configuración de email');return;}
-  const [y,m]=mes.split('-').map(Number);
+async function sendAllAgendas(mes, btn){
+  if(!ejReady){toast('wa','EmailJS no listo','Recargá la página e intentá de nuevo');return;}
+  const parts=String(mes).split('-').map(Number);
+  let yr=parts[0], mo=parts[1];
+  if(!yr||!mo){
+    const g=(GENS||[]).find(g2=>g2.mes===mes&&g2.estado==='aprobada');
+    yr=g?.anio; mo=g?.mesNum;
+    if(!yr||!mo){toast('er','No se pudo determinar el mes','');return;}
+  }
   const fijos=DB.funcionarios.filter(f=>f.activo!==false&&f.tipo!=='suplente');
-  toast('in',`Enviando agendas ${mes}...`,`${fijos.length} funcionarios`);
-  // Enviar email real al primero y simular el resto
-  const primero=fijos[0];
-  if(primero) await sendOneAgenda(primero,y,m);
-  let n=1;
-  const ti=setInterval(()=>{
-    n++;
-    if(n<fijos.length) toast('in',`Enviando (${n}/${fijos.length})`,fNombre(fijos[n]||fijos[0]));
-    if(n>=fijos.length){
-      clearInterval(ti);
-      toast('ok',`${fijos.length} agendas procesadas`,`Mes: ${mes}`);
-      if(sb) createAlerta('ok',`Agendas ${mes} enviadas`,`Por ${cUser.name} · ${fijos.length} funcionarios`,null);
-      renderNotifications();
-    }
-  },400);
+  if(!fijos.length){toast('wa','Sin funcionarios','No hay fijos activos');return;}
+  const mesStr=`${yr}-${String(mo).padStart(2,'0')}`;
+  if(btn){btn.disabled=true;btn.textContent='Enviando...';}
+  let ok=0, errs=0;
+  for(const f of fijos){
+    try{
+      await sendOneAgenda(f, yr, mo, {silent:true});
+      if(sb) await createAlerta('notif_agenda',
+        `📅 Agenda ${mesStr} enviada — ${fNombre(f)}`,
+        `Destinatario: ${EJ.testEmail} · Sector: ${f.sector?.nombre||'—'} · Turno: ${f.turno_fijo||'—'}`,
+        f.id);
+      ok++;
+    }catch(e){ errs++; }
+  }
+  if(btn){btn.disabled=false;btn.textContent='📨 Enviar todas';}
+  if(errs) toast('wa',`${ok} enviadas, ${errs} con error`,`Mes ${mesStr}`);
+  else toast('ok',`${ok} agendas enviadas`,`Mes ${mesStr} → ${EJ.testEmail}`);
+  await renderNotifications();
 }
 
 async function sendIndividualAgenda(){
-  if(!ejReady){toast('wa','EmailJS no disponible','Verificá la configuración de email');return;}
+  if(!ejReady){toast('wa','EmailJS no listo','Recargá la página e intentá de nuevo');return;}
   const empId=document.getElementById('notifEmp')?.value;
   const mesVal=document.getElementById('notifMes')?.value;
   if(!empId||!mesVal){toast('wa','Datos incompletos','Seleccioná funcionario y mes');return;}
   const f=DB.funcionarios.find(x=>String(x.id)===String(empId));
   if(!f){toast('er','Funcionario no encontrado','');return;}
-  const [y,m]=mesVal.split('-').map(Number);
-  await sendOneAgenda(f,y,m);
+  const parts=String(mesVal).split('-').map(Number);
+  const yr=parts[0], mo=parts[1];
+  if(!yr||!mo){toast('er','Mes inválido','');return;}
+  await sendOneAgenda(f, yr, mo);
+  if(sb) await createAlerta('notif_agenda',
+    `📅 Agenda ${mesVal} enviada — ${fNombre(f)}`,
+    `Destinatario: ${EJ.testEmail} · Sector: ${f.sector?.nombre||'—'} · Turno: ${f.turno_fijo||'—'}`,
+    f.id);
+  await renderNotifications();
 }
 
-async function sendOneAgenda(f,year,month){
+async function sendOneAgenda(f,year,month,{silent=false}={}){
   const htmlBody=buildRealEmailBody(f,year,month);
-  try{
-    await emailjs.send(EJ.serviceId,EJ.templateId,{
-      to_email:EJ.testEmail,
-      subject:`GuardiaApp — Agenda ${year}-${String(month).padStart(2,'0')} · ${fNombre(f)}`,
-      message:htmlBody,
-    });
-    toast('ok',`Agenda enviada — ${fNombre(f)}`,'Email procesado correctamente');
-  }catch(err){
-    toast('er',`Error al enviar agenda de ${fNombre(f)}`,String(err).slice(0,80));
-  }
+  await emailjs.send(EJ.serviceId,EJ.templateId,{
+    to_email:EJ.testEmail,
+    subject:`GuardiaApp — Agenda ${year}-${String(month).padStart(2,'0')} · ${fNombre(f)}`,
+    message:htmlBody,
+  });
+  if(!silent) toast('ok',`Agenda enviada — ${fNombre(f)}`,`→ ${EJ.testEmail}`);
 }
 
 function buildRealEmailBody(f,year,month){
@@ -4154,7 +5211,7 @@ function buildRealEmailBody(f,year,month){
     M:'background:#dbeafe;color:#1d4ed8',
     T:'background:#fef3c7;color:#92400e',
     V:'background:#ede9fe;color:#5b21b6',
-    N:'background:#111827;color:#f9fafb',
+    N:'background:#4C1D95;color:#f5f3ff',
   };
   const skipCodes=new Set(['LAR','CERT','LE','F','DXF','CPL','E','CMP','LX1','LX2','LX3','LX4','LXE','MAT','PAT']);
   const fnac=f.fecha_nacimiento||'';
@@ -4234,15 +5291,92 @@ function buildRealEmailBody(f,year,month){
 
 async function sendCustomNotif(){
   const tipo=document.getElementById('notifTipo')?.value||'aviso';
+  const dest=document.getElementById('notifDest')?.value||'all';
   const msg=document.getElementById('notifMsg')?.value?.trim();
   if(!msg){toast('wa','Mensaje vacío','Escribí el aviso antes de enviar');return;}
   const tipoLabel={cambio:'🔄 Cambio de turno',aviso:'📢 Aviso general',recordatorio:'🔔 Recordatorio',agenda:'📅 Actualización de agenda'}[tipo]||tipo;
-  toast('ok',`${tipoLabel} enviado`,'Notificación registrada en el historial');
-  if(sb) await createAlerta('ok',`Aviso enviado: ${tipoLabel}`,msg.slice(0,120)+' — Por '+cUser.name,null);
+  const titulo=`${tipoLabel}`;
+  const desc=msg.slice(0,200)+' — Por '+(cUser?.name||'Supervisora');
+  if(dest==='all'){
+    // broadcast: funcionario_id null = visible a todos
+    if(sb) await createAlerta('notif_aviso',titulo,desc,null);
+    toast('ok','Aviso registrado',`Destinatarios: todos los funcionarios`);
+  } else {
+    // sector/individual: persiste como broadcast por ahora y avisa
+    if(sb) await createAlerta('notif_aviso',titulo,desc,null);
+    toast('ok','Aviso registrado',`Filtro por ${dest==='sector'?'sector':'funcionario'} disponible próximamente`);
+  }
   const inp=document.getElementById('notifMsg'); if(inp) inp.value='';
-  renderNotifications();
+  await renderNotifications();
 }
 
 // ........................................................
+// SECTORES CRUD
+// ........................................................
+function renderSectors(){
+  if(!dbLoaded){ document.getElementById('sectorsBody').innerHTML='<tr><td colspan="4" style="color:var(--t3);padding:20px;text-align:center">Cargando...</td></tr>'; return; }
+  const funcsAll = [...(DB.funcionariosAll||[]), ...(DB.suplentesAll||[])];
+  const rows = (DB.sectores||[]).map(s=>{
+    const count = funcsAll.filter(f=>f.sector?.nombre===s.nombre).length;
+    return `<tr>
+      <td><strong>${s.nombre}</strong></td>
+      <td>${s.codigo||'—'}</td>
+      <td>${count}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn bg sm" onclick="openSectorModal('${s.id}')">✏️ Editar</button>
+        <button class="btn sm" style="color:var(--red)" onclick="deleteSector('${s.id}','${s.nombre.replace(/'/g,"\\'")}')">🗑</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" style="color:var(--t3);padding:20px;text-align:center">No hay sectores cargados</td></tr>';
+  document.getElementById('sectorsBody').innerHTML = rows;
+}
 
+function openSectorModal(id){
+  document.getElementById('sSectorId').value = id||'';
+  if(id){
+    const s = (DB.sectores||[]).find(x=>x.id===id);
+    document.getElementById('sectorMTitle').textContent = '🏥 Editar Sector';
+    document.getElementById('sSectorNombre').value = s?.nombre||'';
+    document.getElementById('sSectorCodigo').value = s?.codigo||'';
+  } else {
+    document.getElementById('sectorMTitle').textContent = '🏥 Nuevo Sector';
+    document.getElementById('sSectorNombre').value = '';
+    document.getElementById('sSectorCodigo').value = '';
+  }
+  openM('sectorM');
+}
+
+async function saveSector(){
+  if(!sb){ toast('er','Sin conexión','Supabase no iniciado'); return; }
+  const id = document.getElementById('sSectorId').value||null;
+  const nombre = document.getElementById('sSectorNombre').value.trim().toUpperCase();
+  const codigo = document.getElementById('sSectorCodigo').value.trim().toUpperCase();
+  if(!nombre){ toast('wa','Nombre requerido','Ingresá el nombre del sector'); return; }
+  let error;
+  if(id){
+    ({error} = await sb.from('sectores').update({nombre,codigo}).eq('id',id));
+  } else {
+    ({error} = await sb.from('sectores').insert({nombre,codigo}));
+  }
+  if(error){ toast('er','Error guardando sector',error.message); return; }
+  toast('ok',id?'Sector actualizado':'Sector creado',nombre);
+  closeM('sectorM');
+  const {data} = await sb.from('sectores').select('id,nombre,codigo').order('nombre');
+  if(data){ DB.sectores = data; populateSels(); }
+  renderSectors();
+}
+
+async function deleteSector(id, nombre){
+  if(!sb){ toast('er','Sin conexión','Supabase no iniciado'); return; }
+  const funcsAll = [...(DB.funcionariosAll||[]), ...(DB.suplentesAll||[])];
+  const count = funcsAll.filter(f=>f.sector?.nombre===nombre).length;
+  if(count > 0){ toast('wa','No se puede eliminar',`${count} funcionario(s) usan este sector`); return; }
+  if(!confirm(`¿Eliminar sector "${nombre}"?`)) return;
+  const {error} = await sb.from('sectores').delete().eq('id',id);
+  if(error){ toast('er','Error eliminando sector',error.message); return; }
+  toast('ok','Sector eliminado',nombre);
+  DB.sectores = (DB.sectores||[]).filter(s=>s.id!==id);
+  populateSels();
+  renderSectors();
+}
 
