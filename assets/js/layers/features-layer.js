@@ -5528,6 +5528,12 @@ async function bulkCreateStart(){
     stepsEl.scrollTop = stepsEl.scrollHeight;
   };
 
+  // signUp con timeout de 12s para no quedar colgado
+  const signUpWithTimeout = (email, pass) => Promise.race([
+    sb.auth.signUp({email, password:pass}),
+    new Promise((_,reject) => setTimeout(()=>reject(new Error('Timeout — Supabase no respondió')), 12000))
+  ]);
+
   let created=0, skipped=0, linked=0;
   const errorList=[];
 
@@ -5536,7 +5542,7 @@ async function bulkCreateStart(){
     const username = genUsername(func);
     const nombre   = `${func.apellido||''} ${func.nombre||''}`.trim() || username;
     statusEl.textContent = `Procesando ${idx+1} de ${missing.length}: ${nombre}`;
-    await new Promise(r=>setTimeout(r,20)); // yield para repintar UI
+    await new Promise(r=>setTimeout(r,400)); // pausa para evitar rate limiting
 
     if(!username){
       log('✗', nombre, 'sin username generado', 'var(--red)');
@@ -5550,7 +5556,14 @@ async function bulkCreateStart(){
     const authEmail = `${username}@guardiapp.app`;
     log('⟳', username, 'creando...', 'var(--text)');
 
-    const {data:authData, error:authErr} = await sb.auth.signUp({email:authEmail, password:'Clinica2026!'});
+    let authData, authErr;
+    try {
+      ({data:authData, error:authErr} = await signUpWithTimeout(authEmail, 'Clinica2026!'));
+    } catch(e) {
+      stepsEl.lastElementChild?.remove();
+      log('✗', username, e.message, 'var(--red)');
+      errorList.push(`${username}: ${e.message}`); continue;
+    }
     if(authErr){
       const isDupe = authErr.message?.toLowerCase().includes('already');
       if(isDupe){
