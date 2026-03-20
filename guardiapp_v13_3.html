@@ -387,7 +387,23 @@
       </div>
     </div></div>
   </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+    <input id="uSearch" type="text" placeholder="Buscar nombre o usuario..." oninput="renderUsers()" style="flex:1;min-width:180px;padding:6px 10px;border:1px solid var(--brd);border-radius:var(--r);background:var(--bg2);color:var(--text);font-size:12px">
+    <select id="uFilterRol" onchange="renderUsers()" style="padding:6px 10px;border:1px solid var(--brd);border-radius:var(--r);background:var(--bg2);color:var(--text);font-size:12px">
+      <option value="">Todos los roles</option>
+      <option value="admin">Admin</option>
+      <option value="supervisor">Supervisor</option>
+      <option value="nurse">Enfermería</option>
+    </select>
+    <select id="uFilterEstado" onchange="renderUsers()" style="padding:6px 10px;border:1px solid var(--brd);border-radius:var(--r);background:var(--bg2);color:var(--text);font-size:12px">
+      <option value="">Todos los estados</option>
+      <option value="activo">Activos</option>
+      <option value="inactivo">Inactivos</option>
+      <option value="cambio">Cambio de pass pendiente</option>
+    </select>
+  </div>
   <div class="tw"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Email notificaciones</th><th>Rol</th><th>Sector</th><th>Estado</th><th></th></tr></thead><tbody id="usersBody"></tbody></table></div>
+  <div id="usersCount" style="font-size:11px;color:var(--t3);margin-top:6px;text-align:right"></div>
 </div>
 
 <!-- SECTORS -->

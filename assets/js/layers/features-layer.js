@@ -3632,7 +3632,10 @@ function onUEmpChange(){
 
 function renderUsers(){
   const body=document.getElementById('usersBody');if(!body)return;
-  const users = dbLoaded&&DB.usuarios.length
+  const search=(document.getElementById('uSearch')?.value||'').toLowerCase().trim();
+  const filterRol=document.getElementById('uFilterRol')?.value||'';
+  const filterEstado=document.getElementById('uFilterEstado')?.value||'';
+  let users = dbLoaded&&DB.usuarios.length
     ? DB.usuarios.map((u,i)=>({
         id:u.id||i,
         name:u.funcionario?`${u.funcionario.apellido}, ${u.funcionario.nombre}`:usernameFromEmail(u.email),
@@ -3647,6 +3650,13 @@ function renderUsers(){
         funcionario_id:u.funcionario_id,
       }))
     : USERS_DATA;
+  if(search) users=users.filter(u=>u.name.toLowerCase().includes(search)||u.username.toLowerCase().includes(search));
+  if(filterRol) users=users.filter(u=>u.role===filterRol);
+  if(filterEstado==='activo') users=users.filter(u=>u.active);
+  else if(filterEstado==='inactivo') users=users.filter(u=>!u.active);
+  else if(filterEstado==='cambio') users=users.filter(u=>u.mustChange);
+  const cnt=document.getElementById('usersCount');
+  if(cnt) cnt.textContent=users.length===DB.usuarios.length?`${users.length} usuarios`:`${users.length} de ${DB.usuarios.length} usuarios`;
   const rChip={admin:'cb2',supervisor:'cg',nurse:'cp'};
   const rLabel={admin:'Admin/Gerencia',supervisor:'Supervisor',nurse:'Enfermería'};
   body.innerHTML=users.map((u,i)=>`<tr>
