@@ -56,7 +56,15 @@ exports.handler = async function(event) {
         body: JSON.stringify({ user_email: email })
       });
       const existingId = rpcRes.ok ? await rpcRes.json().catch(() => null) : null;
-      if (existingId) return { statusCode: 200, body: JSON.stringify({ auth_user_id: existingId, linked: true }) };
+      if (existingId) {
+        // Insertar en tabla usuarios aunque el auth user ya existía
+        await fetch(`${SB_URL}/rest/v1/usuarios`, {
+          method: 'POST',
+          headers: { apikey: SVC_KEY, Authorization: `Bearer ${SVC_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify({ email: username, rol: rol || 'nurse', activo: true, funcionario_id: funcionario_id || null, auth_user_id: existingId, must_change_password: true })
+        });
+        return { statusCode: 200, body: JSON.stringify({ auth_user_id: existingId, linked: true }) };
+      }
     }
     return { statusCode: 400, body: JSON.stringify({ error: `[${createRes.status}] ${errMsg}` }) };
   }
