@@ -53,15 +53,26 @@ exports.handler = async function(event) {
     return { statusCode: 403, body: JSON.stringify({ error: 'Solo administradores pueden resetear contraseñas.' }) };
   }
 
-  // 3. Obtener auth_user_id desde tabla usuarios (evita listar todos los usuarios de auth)
+  // 3. Obtener auth_user_id desde tabla usuarios
   const uRes = await fetch(
     `${SB_URL}/rest/v1/usuarios?email=eq.${encodeURIComponent(userEmail)}&select=auth_user_id`,
     { headers: { apikey: SVC_KEY, Authorization: `Bearer ${SVC_KEY}` } }
   );
   const uRows = await uRes.json();
-  const authUserId = uRows?.[0]?.auth_user_id;
+  let authUserId = uRows?.[0]?.auth_user_id;
+
+  // Fallback: buscar en auth.users por email via RPC si auth_user_id es null
   if (!authUserId) {
-    return { statusCode: 404, body: JSON.stringify({ error: `auth_user_id no encontrado para: ${userEmail}` }) };
+    const rpcRes = await fetch(`${SB_URL}/rest/v1/rpc/get_auth_user_id`, {
+      method: 'POST',
+      headers: { apikey: SVC_KEY, Authorization: `Bearer ${SVC_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_email: userEmail })
+    });
+    if (rpcRes.ok) authUserId = await rpcRes.json();
+  }
+
+  if (!authUserId) {
+    return { statusCode: 404, body: JSON.stringify({ error: `Usuario no encontrado en auth: ${userEmail}` }) };
   }
 
   // 4. Actualizar la contraseña
