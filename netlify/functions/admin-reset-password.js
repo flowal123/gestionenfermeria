@@ -53,23 +53,19 @@ exports.handler = async function(event) {
     return { statusCode: 403, body: JSON.stringify({ error: 'Solo administradores pueden resetear contraseñas.' }) };
   }
 
-  // 3. Buscar el auth user por email (lista hasta 1000 usuarios)
-  // userEmail en tabla es username sin dominio — se agrega dominio para buscar en Supabase Auth
-  const authEmailTarget = userEmail.includes('@') ? userEmail : `${userEmail}@guardiapp.app`;
-  const listRes = await fetch(`${SB_URL}/auth/v1/admin/users?page=1&per_page=1000`, {
-    headers: { apikey: SVC_KEY, Authorization: `Bearer ${SVC_KEY}` }
-  });
-  if (!listRes.ok) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'No se pudo consultar usuarios de auth.' }) };
-  }
-  const listData = await listRes.json();
-  const authUser = (listData?.users || []).find(u => u.email === authEmailTarget);
-  if (!authUser) {
-    return { statusCode: 404, body: JSON.stringify({ error: `Usuario no encontrado en auth: ${userEmail}` }) };
+  // 3. Obtener auth_user_id desde tabla usuarios (evita listar todos los usuarios de auth)
+  const uRes = await fetch(
+    `${SB_URL}/rest/v1/usuarios?email=eq.${encodeURIComponent(userEmail)}&select=auth_user_id`,
+    { headers: { apikey: SVC_KEY, Authorization: `Bearer ${SVC_KEY}` } }
+  );
+  const uRows = await uRes.json();
+  const authUserId = uRows?.[0]?.auth_user_id;
+  if (!authUserId) {
+    return { statusCode: 404, body: JSON.stringify({ error: `auth_user_id no encontrado para: ${userEmail}` }) };
   }
 
   // 4. Actualizar la contraseña
-  const updateRes = await fetch(`${SB_URL}/auth/v1/admin/users/${authUser.id}`, {
+  const updateRes = await fetch(`${SB_URL}/auth/v1/admin/users/${authUserId}`, {
     method: 'PUT',
     headers: {
       apikey: SVC_KEY,
@@ -83,8 +79,8 @@ exports.handler = async function(event) {
     return { statusCode: 400, body: JSON.stringify({ error: err.message || 'Error al actualizar contraseña.' }) };
   }
 
-  // 5. Actualizar auth_user_id y must_change_password en tabla usuarios
-  const patch = { auth_user_id: authUser.id };
+  // 5. Actualizar must_change_password en tabla usuarios
+  const patch = {};
   if (mustChange !== undefined) patch.must_change_password = mustChange;
 
   await fetch(`${SB_URL}/rest/v1/usuarios?email=eq.${encodeURIComponent(userEmail)}`, {
