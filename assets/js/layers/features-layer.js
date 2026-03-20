@@ -5528,11 +5528,10 @@ async function bulkCreateStart(){
     stepsEl.scrollTop = stepsEl.scrollHeight;
   };
 
-  // signUp con timeout de 12s para no quedar colgado
-  const signUpWithTimeout = (email, pass) => Promise.race([
-    sb.auth.signUp({email, password:pass}),
-    new Promise((_,reject) => setTimeout(()=>reject(new Error('Timeout — Supabase no respondió')), 12000))
-  ]);
+  // Obtener token de sesión para llamar a la función admin
+  const {data:{session}} = await sb.auth.getSession();
+  const token = session?.access_token;
+  if(!token){ log('✗','—','Sin sesión activa','var(--red)'); return; }
 
   let created=0, skipped=0, linked=0;
   const errorList=[];
@@ -5542,7 +5541,7 @@ async function bulkCreateStart(){
     const username = genUsername(func);
     const nombre   = `${func.apellido||''} ${func.nombre||''}`.trim() || username;
     statusEl.textContent = `Procesando ${idx+1} de ${missing.length}: ${nombre}`;
-    await new Promise(r=>setTimeout(r,400)); // pausa para evitar rate limiting
+    await new Promise(r=>setTimeout(r,30)); // yield UI
 
     if(!username){
       log('✗', nombre, 'sin username generado', 'var(--red)');
@@ -5553,44 +5552,30 @@ async function bulkCreateStart(){
       skipped++; continue;
     }
 
-    const authEmail = `${username}@guardiapp.app`;
     log('⟳', username, 'creando...', 'var(--text)');
 
-    let authData, authErr;
+    let res, resBody;
     try {
-      ({data:authData, error:authErr} = await signUpWithTimeout(authEmail, 'Clinica2026!'));
+      res = await fetch('/.netlify/functions/admin-create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password:'Clinica2026!', funcionario_id:func.id, rol:'nurse', authHeader:`Bearer ${token}` })
+      });
+      resBody = await res.json();
     } catch(e) {
       stepsEl.lastElementChild?.remove();
-      log('✗', username, e.message, 'var(--red)');
+      log('✗', username, `Error de red: ${e.message}`, 'var(--red)');
       errorList.push(`${username}: ${e.message}`); continue;
     }
-    if(authErr){
-      const isDupe = authErr.message?.toLowerCase().includes('already');
-      if(isDupe){
-        const {data:existingId} = await sb.rpc('get_auth_user_id',{user_email:authEmail}).catch(()=>({data:null}));
-        if(existingId){
-          const {error:lErr} = await sb.from('usuarios').insert({email:username, rol:'nurse', activo:true, funcionario_id:func.id, auth_user_id:existingId, must_change_password:true});
-          if(!lErr){
-            // reemplazar última línea con estado vinculado
-            stepsEl.lastElementChild?.remove();
-            log('↗', username, 'ya en Auth — vinculado a tabla', 'var(--amber)');
-            existingEmails.add(username); linked++; continue;
-          }
-        }
-      }
-      stepsEl.lastElementChild?.remove();
-      log('✗', username, authErr.message, 'var(--red)');
-      errorList.push(`${username}: ${authErr.message}`); continue;
-    }
 
-    const {error:uErr} = await sb.from('usuarios').insert({
-      email:username, rol:'nurse', activo:true, funcionario_id:func.id,
-      auth_user_id:authData?.user?.id||null, must_change_password:true
-    });
     stepsEl.lastElementChild?.remove();
-    if(uErr){
-      log('✗', username, `BD: ${uErr.message}`, 'var(--red)');
-      errorList.push(`${username} BD: ${uErr.message}`); continue;
+    if(!res.ok){
+      log('✗', username, resBody?.error || `Error ${res.status}`, 'var(--red)');
+      errorList.push(`${username}: ${resBody?.error||res.status}`); continue;
+    }
+    if(resBody?.linked){
+      log('↗', username, 'ya en Auth — vinculado a tabla', 'var(--amber)');
+      existingEmails.add(username); linked++; continue;
     }
     log('✓', username, 'creado correctamente', 'var(--green)');
     existingEmails.add(username);
