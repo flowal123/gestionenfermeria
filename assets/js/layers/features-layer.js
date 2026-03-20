@@ -3637,14 +3637,14 @@ function renderUsers(){
         id:u.id||i,
         name:u.funcionario?`${u.funcionario.apellido}, ${u.funcionario.nombre}`:usernameFromEmail(u.email),
         username:usernameFromEmail(u.email),
+        email:u.email||'',
         notifEmail:u.funcionario?.email||'',
         role:u.rol,
         sector:u.funcionario?.sector?.nombre||'—',
         last:u.ultimo_acceso?new Date(u.ultimo_acceso).toLocaleDateString('es-UY'):'Nunca',
         active:u.activo,
+        mustChange:u.must_change_password||false,
         funcionario_id:u.funcionario_id,
-        telefono:u.funcionario?.telefono,
-        fnac:u.funcionario?.fecha_nacimiento,
       }))
     : USERS_DATA;
   const rChip={admin:'cb2',supervisor:'cg',nurse:'cp'};
@@ -3655,9 +3655,13 @@ function renderUsers(){
     <td class="mn" style="font-size:10px;color:var(--t3)">${u.notifEmail||'—'}</td>
     <td><span class="chip ${rChip[u.role]||'cn'}">${rLabel[u.role]||u.role}</span></td>
     <td style="font-size:11px;color:var(--t2)">${u.sector}</td>
-    <td><span class="dot ${u.active?'dg':'dn2'}"></span>${u.active?'Activo':'Inactivo'}</td>
+    <td>
+      <span class="dot ${u.active?'dg':'dn2'}"></span>${u.active?'Activo':'Inactivo'}
+      ${u.mustChange?'<br><span style="font-size:9px;color:var(--amber);font-weight:600">🔑 cambio requerido</span>':''}
+    </td>
     <td><div style="display:flex;gap:4px">
-      <button class="btn bg xs" onclick="editUser(${i})">✏️</button>
+      <button class="btn bg xs" onclick="editUser(${i})" title="Editar">✏️</button>
+      <button class="btn bg xs" onclick="openResetPassModal('${u.email}','${u.name.replace(/'/g,"\\'")}')" title="Resetear contraseña">🔑</button>
       ${u.active
         ? `<button class="btn bd xs" onclick="toggleUser(${i})">Deshabilitar</button>`
         : `<button class="btn bs xs" onclick="toggleUser(${i})">Habilitar</button>`}
@@ -4160,17 +4164,20 @@ async function saveUser(){
     if(!usernameInp){ toast('er','Usuario requerido','Generá o ingresá un nombre de usuario.'); return; }
     const passInp=document.getElementById('uPass')?.value||'Clinica2026!';
     if(passInp.length<6){ toast('er','Contraseña muy corta','Mínimo 6 caracteres.'); return; }
+    const mustChange=document.getElementById('uMustChange')?.value==='si';
     const funcId=document.getElementById('uEmp')?.value||'';
     const funcIdClean=funcId||null;
     // Construir email virtual para Supabase Auth
     const authEmail=usernameInp.includes('@')?usernameInp:`${usernameInp}@guardiapp.app`;
     if(sb){
       // 1. Crear cuenta en Supabase Auth con email virtual
-      const {error:authErr}=await sb.auth.signUp({email:authEmail, password:passInp});
+      const {data:authData,error:authErr}=await sb.auth.signUp({email:authEmail, password:passInp});
       if(authErr){ toast('er','Error al crear usuario',authErr.message); return; }
+      const authUserId=authData?.user?.id||null;
       // 2. Registrar en tabla usuarios
       const {error:uErr}=await sb.from('usuarios').insert({
-        email:authEmail, rol:rolSel, activo:true, funcionario_id:funcIdClean
+        email:authEmail, rol:rolSel, activo:true, funcionario_id:funcIdClean,
+        auth_user_id:authUserId, must_change_password:mustChange
       });
       if(uErr){ toast('er','Error BD',uErr.message); return; }
       // 3. Si hay email de notificaciones, guardar en funcionario
@@ -5378,5 +5385,94 @@ async function deleteSector(id, nombre){
   DB.sectores = (DB.sectores||[]).filter(s=>s.id!==id);
   populateSels();
   renderSectors();
+}
+
+// ........................................................
+// GESTIÓN DE CONTRASEÑAS DE USUARIOS
+// ........................................................
+
+function openResetPassModal(email, name){
+  document.getElementById('rpUserEmail').value = email;
+  document.getElementById('rpNewPass').value   = 'Clinica2026!';
+  document.getElementById('rpMustChange').value = '1';
+  document.getElementById('resetPassMTitle').textContent = `🔑 Resetear contraseña — ${name}`;
+  openM('resetPassM');
+}
+
+async function saveResetPass(){
+  if(!sb){ toast('er','Sin conexión',''); return; }
+  const userEmail   = document.getElementById('rpUserEmail')?.value||'';
+  const newPassword = (document.getElementById('rpNewPass')?.value||'').trim();
+  const mustChange  = document.getElementById('rpMustChange')?.value === '1';
+  if(newPassword.length < 6){ toast('er','Contraseña muy corta','Mínimo 6 caracteres.'); return; }
+  const btn = document.querySelector('#resetPassM .btn.bp');
+  if(btn){ btn.disabled=true; btn.textContent='Guardando...'; }
+  try {
+    const {data:{session}} = await sb.auth.getSession();
+    if(!session){ toast('er','Sin sesión','Recargá la página e ingresá de nuevo.'); return; }
+    const res = await fetch('/.netlify/functions/admin-reset-password', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${session.access_token}` },
+      body: JSON.stringify({ userEmail, newPassword, mustChange })
+    });
+    if(!res.ok){
+      const err = await res.json().catch(()=>({}));
+      toast('er','Error al resetear', err.error||'Error desconocido'); return;
+    }
+    toast('ok','Contraseña actualizada', mustChange?'El usuario deberá cambiarla al ingresar.':'Contraseña lista.');
+    // Actualizar indicador local
+    const dbU = DB.usuarios.find(u=>u.email===userEmail);
+    if(dbU) dbU.must_change_password = mustChange;
+    closeM('resetPassM');
+    renderUsers();
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent='💾 Guardar'; }
+  }
+}
+
+async function bulkCreateUsers(){
+  if(!sb){ toast('er','Sin conexión',''); return; }
+  if(!dbLoaded){ toast('wa','Esperá','La base de datos aún está cargando.'); return; }
+  const allFuncs = [...(DB.funcionariosAll||DB.funcionarios), ...(DB.suplentesAll||DB.suplentes)]
+    .filter(f => f.activo !== false && f.id);
+  // Consultar TODOS los usuarios (activos e inactivos) para evitar duplicados
+  const {data:allUsers} = await sb.from('usuarios').select('email,funcionario_id');
+  const existingFuncIds = new Set((allUsers||[]).map(u=>String(u.funcionario_id)).filter(Boolean));
+  const existingEmails  = new Set((allUsers||[]).map(u=>u.email).filter(Boolean));
+  const missing = allFuncs.filter(f => !existingFuncIds.has(String(f.id)));
+  if(!missing.length){
+    toast('ok','Sin pendientes','Todos los funcionarios ya tienen usuario en el sistema.'); return;
+  }
+  if(!confirm(`¿Crear ${missing.length} usuario(s) con contraseña "Clinica2026!" y cambio obligatorio al primer login?\n\nEste proceso puede tardar unos segundos.`)) return;
+  let created=0, skipped=0, errors=0;
+  for(const func of missing){
+    const username = genUsername(func);
+    if(!username){ errors++; continue; }
+    const authEmail = `${username}@guardiapp.app`;
+    if(existingEmails.has(authEmail)){ skipped++; continue; }
+    // Crear en Supabase Auth
+    const {data:authData, error:authErr} = await sb.auth.signUp({email:authEmail, password:'Clinica2026!'});
+    if(authErr){ console.warn('[bulkCreate] signUp error:', username, authErr.message); errors++; continue; }
+    const authUserId = authData?.user?.id||null;
+    // Insertar en tabla usuarios
+    const role = func.tipo==='suplente' ? 'nurse' : 'nurse';
+    const {error:uErr} = await sb.from('usuarios').insert({
+      email:authEmail, rol:role, activo:true, funcionario_id:func.id,
+      auth_user_id:authUserId, must_change_password:true
+    });
+    if(uErr){ console.warn('[bulkCreate] insert error:', username, uErr.message); errors++; continue; }
+    existingEmails.add(authEmail);
+    created++;
+  }
+  // Recargar usuarios en DB
+  const {data:freshUsers} = await sb.from('usuarios').select('id, email, rol, activo, must_change_password, auth_user_id, funcionario_id, funcionario:funcionario_id(id,apellido,nombre,email,sector:sector_id(nombre),clinica:clinica_id(nombre))');
+  if(freshUsers) DB.usuarios = freshUsers;
+  renderUsers();
+  const msg = [
+    created ? `${created} creados` : '',
+    skipped ? `${skipped} omitidos (username duplicado)` : '',
+    errors  ? `${errors} errores (ver consola)` : ''
+  ].filter(Boolean).join(' · ');
+  toast(errors?'wa':'ok', `Usuarios creados: ${created}`, msg||'Proceso finalizado.');
 }
 

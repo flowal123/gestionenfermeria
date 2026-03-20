@@ -38,7 +38,7 @@ async function loadDB(){
       sb.from('licencias').select('id, funcionario_id, suplente_id, tipo, fecha_desde, fecha_hasta, dias, genera_vacante, estado, observaciones, funcionario:funcionario_id(id,apellido,nombre,telefono,fecha_nacimiento,sector:sector_id(nombre)), suplente:suplente_id(apellido,nombre)').in('estado',["activa","pendiente"]),
       sb.from('cambios').select('id, solicitante_id, receptor_id, turno_cede, fecha_cede, turno_recibe, fecha_recibe, estado, created_at, solicitante:solicitante_id(apellido,nombre), receptor:receptor_id(apellido,nombre)').order('created_at',{ascending:false}),
       sb.from('alertas').select('*').eq('leida',false).order('created_at',{ascending:false}).limit(100),
-      sb.from('usuarios').select('id, email, rol, activo, funcionario_id, funcionario:funcionario_id(id,apellido,nombre,email,sector:sector_id(nombre),clinica:clinica_id(nombre))').eq('activo',true),
+      sb.from('usuarios').select('id, email, rol, activo, must_change_password, auth_user_id, funcionario_id, funcionario:funcionario_id(id,apellido,nombre,email,sector:sector_id(nombre),clinica:clinica_id(nombre))'),
       sb.from('patron_historico').select('funcionario_id,patron,ciclo_ref,turno_fijo,turno_ciclo,turno_semana,vigente_desde,vigente_hasta').order('vigente_desde'),
       sb.from('sectores').select('id,nombre,codigo').order('nombre'),
       sb.from('generaciones').select('*').order('created_at',{ascending:false}),

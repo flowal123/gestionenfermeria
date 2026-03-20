@@ -125,7 +125,7 @@ async function doLogin(){
       }
       // Obtener rol y datos del funcionario desde la tabla usuarios
       const {data:uRow, error:uErr} = await sb.from('usuarios')
-        .select('rol, activo, funcionario_id, funcionario:funcionario_id(apellido, nombre, sector:sector_id(nombre))')
+        .select('rol, activo, must_change_password, funcionario_id, funcionario:funcionario_id(apellido, nombre, sector:sector_id(nombre))')
         .eq('email', authEmail)
         .eq('activo', true)
         .maybeSingle();
@@ -145,6 +145,16 @@ async function doLogin(){
         sector:         f?.sector?.nombre||'—',
         clinic:         '—',
       };
+      // Guardar auth_user_id en tabla usuarios si todavía no está registrado
+      if(data?.user?.id){
+        sb.from('usuarios').update({auth_user_id:data.user.id}).eq('email',authEmail).is('auth_user_id',null).then(()=>{});
+      }
+      // Si debe cambiar contraseña: mostrar modal antes de continuar
+      if(uRow.must_change_password){
+        window._pendingLogin = { infra, features };
+        openM('changePassM');
+        return;
+      }
       _finishLogin(infra, features);
       return;
     }
@@ -470,6 +480,33 @@ function populateSels(){
     if(eTitSecEl){ const cur=eTitSecEl.value; eTitSecEl.innerHTML='<option value="">Seleccionar sector...</option>'+secOpts; if(cur) eTitSecEl.value=cur; }
     const empSecEl = document.getElementById('empSecFilter');
     if(empSecEl){ const cur=empSecEl.value; empSecEl.innerHTML='<option value="">Todos los sectores</option>'+secOpts; if(cur) empSecEl.value=cur; }
+  }
+}
+
+// ........................................................
+// CAMBIO DE CONTRASEÑA OBLIGATORIO AL PRIMER LOGIN
+// ........................................................
+async function submitPasswordChange(){
+  const newPass = (document.getElementById('cpNewPass')?.value||'').trim();
+  const confirm = (document.getElementById('cpConfirm')?.value||'').trim();
+  if(newPass.length < 6){ toast('er','Contraseña muy corta','Mínimo 6 caracteres.'); return; }
+  if(newPass !== confirm){ toast('er','Las contraseñas no coinciden','Verificá que ambos campos sean iguales.'); return; }
+  const btn = document.querySelector('#changePassM .btn');
+  if(btn){ btn.disabled=true; btn.textContent='Guardando...'; }
+  try {
+    const {error} = await sb.auth.updateUser({ password: newPass });
+    if(error){ toast('er','Error al guardar','No se pudo actualizar la contraseña: '+error.message); return; }
+    // Marcar must_change_password = false
+    await sb.from('usuarios').update({ must_change_password: false }).eq('email', cUser.email);
+    // Limpiar campos y cerrar modal
+    ['cpNewPass','cpConfirm'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    closeM('changePassM');
+    // Continuar con el login
+    const { infra, features } = window._pendingLogin || {};
+    window._pendingLogin = null;
+    _finishLogin(infra, features);
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent='💾 Guardar y continuar'; }
   }
 }
 

@@ -366,7 +366,10 @@
 <div class="view" id="v-users">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
     <span style="font-size:12px;color:var(--t2)">Gestión de usuarios del sistema y sus permisos por rol.</span>
-    <button class="btn bp sm" onclick="openM('userM')">＋ Nuevo Usuario</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn bg sm" onclick="bulkCreateUsers()" title="Crear cuentas para todos los funcionarios sin usuario">🤖 Crear usuarios faltantes</button>
+      <button class="btn bp sm" onclick="openM('userM')">＋ Nuevo Usuario</button>
+    </div>
   </div>
   <div class="g2" style="margin-bottom:18px">
     <div class="card"><div class="ch"><div class="ct">🛡️ Permisos por Rol</div></div><div class="cb" style="font-size:11px;line-height:1.9;color:var(--t2)">
@@ -517,10 +520,32 @@
     <div class="fg"><label>Asociar a funcionario</label><select id="uEmp" onchange="onUEmpChange()"><option value="">Seleccionar...</option></select></div>
     <div id="uFuncInfo" style="display:none;background:var(--bg3);border:1px solid var(--b);border-radius:var(--r);padding:10px 14px;font-size:12px;color:var(--t2);margin-top:2px"></div>
     <div class="fr" style="margin-top:10px"><div class="fg"><label>Rol</label><select id="newRole" onchange="updPD()"><option value="admin">Admin / Gerencia</option><option value="supervisor">Supervisor</option><option value="nurse" selected>Enfermería</option></select></div><div class="fg"><label>Usuario del sistema</label><input id="uUsername" type="text" placeholder="Se genera automáticamente" style="font-family:var(--ff-mono);font-size:12px" oninput="this.dataset.manual=this.value?'1':''"></div></div>
-    <div id="uPassRow" class="fr"><div class="fg"><label>Contraseña temporal</label><input id="uPass" type="password" placeholder="Mínimo 6 caracteres"></div><div class="fg"><label>Cambio obligatorio</label><select><option>Sí, al primer login</option><option>No</option></select></div></div>
+    <div id="uPassRow" class="fr"><div class="fg"><label>Contraseña temporal</label><input id="uPass" type="password" placeholder="Mínimo 6 caracteres"></div><div class="fg"><label>Cambio obligatorio al ingresar</label><select id="uMustChange"><option value="si">Sí — cambio al primer login</option><option value="no">No</option></select></div></div>
     <div id="permDesc" style="background:var(--bg3);border-radius:var(--r);padding:11px;font-size:11px;color:var(--t2)">Acceso a su agenda personal, cambios y licencias propias.</div>
   </div>
   <div class="mf"><button class="btn bg" onclick="closeM('userM')">Cancelar</button><button class="btn bp" id="userMSaveBtn" onclick="saveUser()">💾 Crear y Enviar Invitación</button></div>
+</div></div>
+
+<!-- CAMBIO OBLIGATORIO DE CONTRASEÑA (primer login) -->
+<div class="ov" id="changePassM"><div class="modal" style="max-width:380px">
+  <div class="mh"><div class="mh-t">🔐 Cambiar Contraseña</div></div>
+  <div class="mb">
+    <p style="font-size:13px;color:var(--t2);margin:0 0 16px">Por seguridad, debés cambiar tu contraseña antes de continuar.</p>
+    <div class="fg"><label>Nueva contraseña</label><input id="cpNewPass" type="password" placeholder="Mínimo 6 caracteres" autocomplete="new-password"></div>
+    <div class="fg" style="margin-top:10px"><label>Confirmar contraseña</label><input id="cpConfirm" type="password" placeholder="Repetir la nueva contraseña" autocomplete="new-password"></div>
+  </div>
+  <div class="mf"><button class="btn bp" onclick="submitPasswordChange()">💾 Guardar y continuar</button></div>
+</div></div>
+
+<!-- RESETEAR CONTRASEÑA (admin) -->
+<div class="ov" id="resetPassM"><div class="modal" style="max-width:360px">
+  <div class="mh"><div class="mh-t" id="resetPassMTitle">🔑 Resetear Contraseña</div><button class="mh-x" onclick="closeM('resetPassM')">✕</button></div>
+  <div class="mb">
+    <input type="hidden" id="rpUserEmail">
+    <div class="fg"><label>Nueva contraseña</label><input id="rpNewPass" type="password" placeholder="Mínimo 6 caracteres"></div>
+    <div class="fg" style="margin-top:10px"><label>Cambio obligatorio al ingresar</label><select id="rpMustChange"><option value="1">Sí — el usuario debe cambiarla</option><option value="0">No</option></select></div>
+  </div>
+  <div class="mf"><button class="btn bg" onclick="closeM('resetPassM')">Cancelar</button><button class="btn bp" onclick="saveResetPass()">💾 Guardar</button></div>
 </div></div>
 
 <div class="ov" id="emailM"><div class="modal mlg">
