@@ -564,6 +564,33 @@
   <div class="mf"><button class="btn bp" onclick="submitPasswordChange()">💾 Guardar y continuar</button></div>
 </div></div>
 
+<!-- BULK CREATE USERS PROGRESS -->
+<div class="ov" id="bulkUsersM"><div class="modal" style="max-width:520px">
+  <div class="mh"><div class="mh-t">🤖 Crear Usuarios Faltantes</div></div>
+  <div class="mb">
+    <!-- Estado: confirmación previa -->
+    <div id="bulkConfirmPane">
+      <p id="bulkConfirmMsg" style="color:var(--t2);font-size:13px;margin:0 0 16px"></p>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn bg sm" onclick="closeM('bulkUsersM')">Cancelar</button>
+        <button class="btn bp sm" onclick="bulkCreateStart()">Iniciar creación</button>
+      </div>
+    </div>
+    <!-- Estado: proceso en curso -->
+    <div id="bulkRunPane" style="display:none">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <div class="genspin" id="bulkSpin"></div>
+        <div id="bulkStatus" style="font-weight:700;font-size:14px;color:var(--text)">Iniciando...</div>
+      </div>
+      <div id="bulkSteps" style="max-height:280px;overflow-y:auto;border:1px solid var(--brd);border-radius:var(--r);padding:6px 8px;font-size:11px;font-family:var(--ff-mono)"></div>
+      <div id="bulkSummary" style="display:none;margin-top:12px;padding:10px;background:var(--bg3);border-radius:var(--r);font-size:12px;line-height:1.7"></div>
+      <div style="text-align:right;margin-top:12px">
+        <button class="btn bp sm" id="bulkCloseBtn" style="display:none" onclick="closeM('bulkUsersM')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div></div>
+
 <!-- RESETEAR CONTRASEÑA (admin) -->
 <div class="ov" id="resetPassM"><div class="modal" style="max-width:360px">
   <div class="mh"><div class="mh-t" id="resetPassMTitle">🔑 Resetear Contraseña</div><button class="mh-x" onclick="closeM('resetPassM')">✕</button></div>
@@ -609,11 +636,11 @@
 
 <div class="tbox" id="tbox"></div>
 
-<script src="assets/js/layers/contracts-layer.js?v=20260320b"></script>
-<script src="assets/js/layers/core-layer.js?v=20260320b"></script>
-<script src="assets/js/layers/features-layer.js?v=20260320b"></script>
-<script src="assets/js/layers/infra-layer.js?v=20260320b"></script>
-<script src="assets/js/layers/bootstrap-layer.js?v=20260320b"></script>
+<script src="assets/js/layers/contracts-layer.js?v=20260320c"></script>
+<script src="assets/js/layers/core-layer.js?v=20260320c"></script>
+<script src="assets/js/layers/features-layer.js?v=20260320c"></script>
+<script src="assets/js/layers/infra-layer.js?v=20260320c"></script>
+<script src="assets/js/layers/bootstrap-layer.js?v=20260320c"></script>
 </body>
 </html>
 

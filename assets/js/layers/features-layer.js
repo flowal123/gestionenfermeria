@@ -5482,66 +5482,125 @@ async function saveResetPass(){
   }
 }
 
+// Paso 1: abrir modal con confirmación previa
 async function bulkCreateUsers(){
   if(!sb){ toast('er','Sin conexión',''); return; }
   if(!dbLoaded){ toast('wa','Esperá','La base de datos aún está cargando.'); return; }
   const allFuncs = [...(DB.funcionariosAll||DB.funcionarios), ...(DB.suplentesAll||DB.suplentes)]
     .filter(f => f.activo !== false && f.id);
-  // Consultar TODOS los usuarios (activos e inactivos) para evitar duplicados
   const {data:allUsers} = await sb.from('usuarios').select('email,funcionario_id');
   const existingFuncIds = new Set((allUsers||[]).map(u=>String(u.funcionario_id)).filter(Boolean));
-  const existingEmails  = new Set((allUsers||[]).map(u=>u.email).filter(Boolean));
-  const missing = allFuncs.filter(f => !existingFuncIds.has(String(f.id)));
-  if(!missing.length){
+  window._bulkMissing   = allFuncs.filter(f => !existingFuncIds.has(String(f.id)));
+  window._bulkEmails    = new Set((allUsers||[]).map(u=>u.email).filter(Boolean));
+  if(!window._bulkMissing.length){
     toast('ok','Sin pendientes','Todos los funcionarios ya tienen usuario en el sistema.'); return;
   }
-  const confirmed = await new Promise(resolve => appConfirm(
-    'Crear usuarios faltantes',
-    `Se van a crear ${missing.length} usuario(s) con contraseña "Clinica2026!" y cambio obligatorio al primer login. El proceso puede tardar unos segundos.`,
-    resolve, 'Crear usuarios'
-  ));
-  if(!confirmed) return;
-  let created=0, skipped=0;
+  // Mostrar pane de confirmación
+  document.getElementById('bulkConfirmPane').style.display='';
+  document.getElementById('bulkRunPane').style.display='none';
+  document.getElementById('bulkCloseBtn').style.display='none';
+  document.getElementById('bulkSteps').innerHTML='';
+  document.getElementById('bulkSummary').style.display='none';
+  document.getElementById('bulkConfirmMsg').textContent=
+    `Se van a crear ${window._bulkMissing.length} usuario(s) con contraseña "Clinica2026!" y cambio obligatorio al primer login.`;
+  openM('bulkUsersM');
+}
+
+// Paso 2: ejecutar el proceso con log en tiempo real
+async function bulkCreateStart(){
+  const missing  = window._bulkMissing||[];
+  const existingEmails = window._bulkEmails||new Set();
+  if(!missing.length){ closeM('bulkUsersM'); return; }
+
+  // Cambiar a pane de proceso
+  document.getElementById('bulkConfirmPane').style.display='none';
+  document.getElementById('bulkRunPane').style.display='';
+  const stepsEl  = document.getElementById('bulkSteps');
+  const statusEl = document.getElementById('bulkStatus');
+  const spinEl   = document.getElementById('bulkSpin');
+
+  const log = (icon, username, msg, color) => {
+    stepsEl.insertAdjacentHTML('beforeend',
+      `<div style="padding:4px 2px;border-bottom:1px solid var(--brd);color:${color||'var(--t2)'}">
+        <span style="display:inline-block;width:16px;text-align:center">${icon}</span>
+        <strong>${username}</strong> — ${msg}
+      </div>`);
+    stepsEl.scrollTop = stepsEl.scrollHeight;
+  };
+
+  let created=0, skipped=0, linked=0;
   const errorList=[];
-  for(const func of missing){
+
+  for(let idx=0; idx<missing.length; idx++){
+    const func = missing[idx];
     const username = genUsername(func);
-    if(!username){ errorList.push(`Sin username: ${func.apellido||func.id}`); continue; }
+    const nombre   = `${func.apellido||''} ${func.nombre||''}`.trim() || username;
+    statusEl.textContent = `Procesando ${idx+1} de ${missing.length}: ${nombre}`;
+    await new Promise(r=>setTimeout(r,20)); // yield para repintar UI
+
+    if(!username){
+      log('✗', nombre, 'sin username generado', 'var(--red)');
+      errorList.push(`${nombre}: sin username`); continue;
+    }
+    if(existingEmails.has(username)){
+      log('—', username, 'ya existe, omitido', 'var(--t3)');
+      skipped++; continue;
+    }
+
     const authEmail = `${username}@guardiapp.app`;
-    if(existingEmails.has(username)){ skipped++; continue; }
-    // Crear en Supabase Auth
+    log('⟳', username, 'creando...', 'var(--text)');
+
     const {data:authData, error:authErr} = await sb.auth.signUp({email:authEmail, password:'Clinica2026!'});
     if(authErr){
       const isDupe = authErr.message?.toLowerCase().includes('already');
       if(isDupe){
-        // Usuario ya existe en Auth pero no en tabla — intentar vincular via RPC
-        const {data:existingId} = await sb.rpc('get_auth_user_id', {user_email: authEmail}).catch(()=>({data:null}));
+        const {data:existingId} = await sb.rpc('get_auth_user_id',{user_email:authEmail}).catch(()=>({data:null}));
         if(existingId){
-          await sb.from('usuarios').insert({email:username, rol:'nurse', activo:true, funcionario_id:func.id, auth_user_id:existingId, must_change_password:true}).catch(()=>{});
-          existingEmails.add(username); created++; continue;
+          const {error:lErr} = await sb.from('usuarios').insert({email:username, rol:'nurse', activo:true, funcionario_id:func.id, auth_user_id:existingId, must_change_password:true});
+          if(!lErr){
+            // reemplazar última línea con estado vinculado
+            stepsEl.lastElementChild?.remove();
+            log('↗', username, 'ya en Auth — vinculado a tabla', 'var(--amber)');
+            existingEmails.add(username); linked++; continue;
+          }
         }
       }
+      stepsEl.lastElementChild?.remove();
+      log('✗', username, authErr.message, 'var(--red)');
       errorList.push(`${username}: ${authErr.message}`); continue;
     }
-    const authUserId = authData?.user?.id||null;
-    // Insertar en tabla usuarios
+
     const {error:uErr} = await sb.from('usuarios').insert({
       email:username, rol:'nurse', activo:true, funcionario_id:func.id,
-      auth_user_id:authUserId, must_change_password:true
+      auth_user_id:authData?.user?.id||null, must_change_password:true
     });
-    if(uErr){ errorList.push(`${username} (BD): ${uErr.message}`); continue; }
+    stepsEl.lastElementChild?.remove();
+    if(uErr){
+      log('✗', username, `BD: ${uErr.message}`, 'var(--red)');
+      errorList.push(`${username} BD: ${uErr.message}`); continue;
+    }
+    log('✓', username, 'creado correctamente', 'var(--green)');
     existingEmails.add(username);
     created++;
   }
-  // Recargar usuarios en DB
+
+  // Recargar y renderizar
+  statusEl.textContent = 'Actualizando lista de usuarios...';
   const {data:freshUsers} = await sb.from('usuarios').select('id, email, rol, activo, must_change_password, auth_user_id, funcionario_id, funcionario:funcionario_id(id,apellido,nombre,email,sector:sector_id(nombre),clinica:clinica_id(nombre))');
   if(freshUsers) DB.usuarios = freshUsers;
   renderUsers();
-  const parts = [
-    created  ? `${created} creados` : '',
-    skipped  ? `${skipped} ya existían` : '',
-    errorList.length ? `${errorList.length} con error` : ''
-  ].filter(Boolean).join(' · ');
-  toast(errorList.length?'wa':'ok', `Proceso finalizado`, parts||'Sin cambios.');
-  if(errorList.length) console.warn('[bulkCreate] Errores:\n'+errorList.join('\n'));
+
+  // Ocultar spinner, mostrar resumen
+  spinEl.style.display='none';
+  statusEl.textContent = 'Proceso finalizado';
+  const summaryEl = document.getElementById('bulkSummary');
+  summaryEl.innerHTML = [
+    created  ? `<span style="color:var(--green)">✓ ${created} usuario(s) creado(s)</span>` : '',
+    linked   ? `<span style="color:var(--amber)">↗ ${linked} vinculado(s) (ya existían en Auth)</span>` : '',
+    skipped  ? `<span style="color:var(--t3)">— ${skipped} omitido(s) (ya en tabla)</span>` : '',
+    errorList.length ? `<span style="color:var(--red)">✗ ${errorList.length} con error</span>` : '',
+  ].filter(Boolean).join('<br>');
+  summaryEl.style.display='';
+  document.getElementById('bulkCloseBtn').style.display='';
 }
 
