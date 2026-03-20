@@ -90,6 +90,11 @@ async function doLogin(){
   const btn = document.getElementById('loginBtn');
   if(btn){ btn.textContent='Verificando...'; btn.disabled=true; }
 
+  // Limpiar estado residual de intentos previos
+  window._pendingLogin = null;
+  document.getElementById('ls')?.classList.remove('gone');
+  document.querySelectorAll('.ov.open').forEach(m=>m.classList.remove('open'));
+
   const infra    = window.GApp?.getLayer('infra');
   const features = window.GApp?.getLayer('features');
 
@@ -214,8 +219,12 @@ function _finishLogin(infra, features){
 
 function doLogout(){
   closeMobileNav();
-  document.getElementById('ls').classList.remove('gone');
-  document.getElementById('app').classList.add('gone');
+  sb?.auth.signOut().catch(()=>{});
+  window._pendingLogin = null;
+  cUser = {}; cRole = 'nurse';
+  document.querySelectorAll('.ov.open').forEach(m=>m.classList.remove('open'));
+  document.getElementById('ls')?.classList.remove('gone');
+  document.getElementById('app')?.classList.add('gone');
 }
 
 function isMobileNav(){
@@ -495,13 +504,14 @@ async function submitPasswordChange(){
   const confirm = (document.getElementById('cpConfirm')?.value||'').trim();
   if(newPass.length < 6){ toast('er','Contraseña muy corta','Mínimo 6 caracteres.'); return; }
   if(newPass !== confirm){ toast('er','Las contraseñas no coinciden','Verificá que ambos campos sean iguales.'); return; }
-  const btn = document.querySelector('#changePassM .btn');
+  const btn = document.querySelector('#changePassM .btn.bp');
   if(btn){ btn.disabled=true; btn.textContent='Guardando...'; }
   try {
     const {error} = await sb.auth.updateUser({ password: newPass });
     if(error){ toast('er','Error al guardar','No se pudo actualizar la contraseña: '+error.message); return; }
-    // Marcar must_change_password = false
-    await sb.from('usuarios').update({ must_change_password: false }).eq('email', cUser.email);
+    // Marcar must_change_password = false (ignorar error silencioso — no bloquea el login)
+    const {error: dbErr} = await sb.from('usuarios').update({ must_change_password: false }).eq('email', cUser.email);
+    if(dbErr) console.warn('[submitPasswordChange] DB update failed:', dbErr.message);
     // Limpiar campos y cerrar modal
     ['cpNewPass','cpConfirm'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
     closeM('changePassM');
@@ -512,6 +522,15 @@ async function submitPasswordChange(){
   } finally {
     if(btn){ btn.disabled=false; btn.textContent='💾 Guardar y continuar'; }
   }
+}
+
+async function cancelPasswordChange(){
+  await sb?.auth.signOut().catch(()=>{});
+  window._pendingLogin = null;
+  cUser = {}; cRole = 'nurse';
+  ['cpNewPass','cpConfirm'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  closeM('changePassM');
+  document.getElementById('ls')?.classList.remove('gone');
 }
 
 // ........................................................

@@ -169,6 +169,7 @@ tr:hover td{background:rgba(8,145,178,.04);}
 /* MODAL */
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;}
 .ov.open{opacity:1;pointer-events:all;}
+#changePassM{z-index:10001;}/* encima del login screen (#ls z-index:9999) */
 .modal{background:var(--bg2);border:1px solid var(--b);border-radius:18px;width:500px;max-width:96vw;max-height:92vh;overflow-y:auto;transform:scale(.95) translateY(10px);transition:transform .2s;box-shadow:var(--sh);}
 .ov.open .modal{transform:scale(1) translateY(0);}
 .mlg{width:700px;}
