@@ -4152,10 +4152,18 @@ async function saveUser(){
     // En edición: actualizar rol + funcionario vinculado (username no cambia)
     const newFuncId=document.getElementById('uEmp')?.value||null;
     if(sb){
-      await sb.from('usuarios').update({rol:rolSel, funcionario_id:newFuncId||null}).eq('id',window._editUserId);
-      // Sync local DB
-      const dbU=DB.usuarios.find(u=>u.id===window._editUserId);
-      if(dbU){ dbU.rol=rolSel; dbU.funcionario_id=newFuncId||null; }
+      const {error:updErr}=await sb.from('usuarios')
+        .update({rol:rolSel, funcionario_id:newFuncId||null})
+        .eq('id',window._editUserId);
+      if(updErr){ toast('er','Error al actualizar',updErr.message); return; }
+      // Re-fetch para tener datos frescos (incluye join de funcionario)
+      const {data:fresh}=await sb.from('usuarios')
+        .select('id,email,rol,activo,must_change_password,auth_user_id,funcionario_id,funcionario:funcionario_id(id,apellido,nombre,email,sector:sector_id(nombre),clinica:clinica_id(nombre))')
+        .eq('id',window._editUserId).maybeSingle();
+      if(fresh){
+        const idx=DB.usuarios.findIndex(u=>u.id===window._editUserId);
+        if(idx>-1) DB.usuarios[idx]=fresh; else DB.usuarios.push(fresh);
+      }
     }
     toast('ok','Usuario actualizado',`Rol: ${rolSel}${newFuncId?' · funcionario vinculado':''}`);
   } else {
