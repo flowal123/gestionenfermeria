@@ -46,8 +46,10 @@ exports.handler = async function(event) {
 
   if (!createRes.ok) {
     const err = await createRes.json().catch(() => ({}));
+    const errMsg = err.message || err.msg || err.error_description || err.error || JSON.stringify(err);
+    console.error('[admin-create-user] Auth error for', email, ':', errMsg, '| status:', createRes.status);
     // Si ya existe, intentar recuperar el UUID via RPC
-    if (err.code === 'email_exists' || (err.message||'').toLowerCase().includes('already')) {
+    if (err.code === 'email_exists' || errMsg.toLowerCase().includes('already')) {
       const rpcRes = await fetch(`${SB_URL}/rest/v1/rpc/get_auth_user_id`, {
         method: 'POST',
         headers: { apikey: SVC_KEY, Authorization: `Bearer ${SVC_KEY}`, 'Content-Type': 'application/json' },
@@ -56,7 +58,7 @@ exports.handler = async function(event) {
       const existingId = rpcRes.ok ? await rpcRes.json().catch(() => null) : null;
       if (existingId) return { statusCode: 200, body: JSON.stringify({ auth_user_id: existingId, linked: true }) };
     }
-    return { statusCode: 400, body: JSON.stringify({ error: err.message || 'Error al crear usuario en Auth.' }) };
+    return { statusCode: 400, body: JSON.stringify({ error: `[${createRes.status}] ${errMsg}` }) };
   }
 
   const authUser = await createRes.json();
