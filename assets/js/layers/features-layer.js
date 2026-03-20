@@ -3733,12 +3733,15 @@ function editUser(i){
 async function toggleUser(i){
   const users = USERS_DATA;
   if(!users[i]) return;
-  users[i].active=!users[i].active;
+  const newState = !users[i].active;
+  const action = newState ? 'habilitar' : 'deshabilitar';
+  if(!confirm(`¿Querés ${action} al usuario "${users[i].name}"?`)) return;
+  users[i].active = newState;
   if(sb&&users[i].id){
-    await sb.from('usuarios').update({activo:users[i].active}).eq('id',users[i].id);
+    await sb.from('usuarios').update({activo:newState}).eq('id',users[i].id);
   }
   renderUsers();
-  toast(users[i].active?'ok':'wa', users[i].active?'Usuario habilitado':'Usuario deshabilitado', users[i].name);
+  toast(newState?'ok':'wa', newState?'Usuario habilitado':'Usuario deshabilitado', users[i].name);
 }
 
 const PDESC={
@@ -4194,6 +4197,8 @@ async function saveUser(){
     // Nuevo usuario — requiere username
     const usernameInp=(document.getElementById('uUsername')?.value||'').trim().toLowerCase();
     if(!usernameInp){ toast('er','Usuario requerido','Generá o ingresá un nombre de usuario.'); return; }
+    if(!/^[a-z0-9._-]+$/.test(usernameInp)){ toast('er','Usuario inválido','Solo letras, números, punto, guion y guion bajo.'); return; }
+    if(DB.usuarios.some(u=>u.email===usernameInp)){ toast('er','Usuario ya existe','Ya hay un usuario con ese nombre. Elegí otro.'); return; }
     const passInp=document.getElementById('uPass')?.value||'Clinica2026!';
     if(passInp.length<6){ toast('er','Contraseña muy corta','Mínimo 6 caracteres.'); return; }
     const mustChange=document.getElementById('uMustChange')?.value==='si';
@@ -4204,7 +4209,11 @@ async function saveUser(){
     if(sb){
       // 1. Crear cuenta en Supabase Auth con email virtual
       const {data:authData,error:authErr}=await sb.auth.signUp({email:authEmail, password:passInp});
-      if(authErr){ toast('er','Error al crear usuario',authErr.message); return; }
+      if(authErr){
+        const isDupe=authErr.message?.toLowerCase().includes('already');
+        toast('er', isDupe?'Usuario ya existe en Auth':'Error al crear usuario', isDupe?'Ese nombre de usuario ya está registrado en el sistema de autenticación.':authErr.message);
+        return;
+      }
       const authUserId=authData?.user?.id||null;
       // 2. Registrar en tabla usuarios
       const {error:uErr}=await sb.from('usuarios').insert({
@@ -5477,23 +5486,39 @@ async function bulkCreateUsers(){
     toast('ok','Sin pendientes','Todos los funcionarios ya tienen usuario en el sistema.'); return;
   }
   if(!confirm(`¿Crear ${missing.length} usuario(s) con contraseña "Clinica2026!" y cambio obligatorio al primer login?\n\nEste proceso puede tardar unos segundos.`)) return;
-  let created=0, skipped=0, errors=0;
+  let created=0, skipped=0;
+  const errorList=[];
   for(const func of missing){
     const username = genUsername(func);
-    if(!username){ errors++; continue; }
+    if(!username){ errorList.push(`Sin username: ${func.apellido||func.id}`); continue; }
     const authEmail = `${username}@guardiapp.app`;
     if(existingEmails.has(username)){ skipped++; continue; }
     // Crear en Supabase Auth
     const {data:authData, error:authErr} = await sb.auth.signUp({email:authEmail, password:'Clinica2026!'});
-    if(authErr){ console.warn('[bulkCreate] signUp error:', username, authErr.message); errors++; continue; }
+    if(authErr){
+      const isDupe = authErr.message?.toLowerCase().includes('already');
+      if(isDupe){
+        // Usuario ya existe en Auth pero no en tabla — intentar vincular via RPC
+        const rpcRes = await fetch(`${window._sbUrl||''}/rest/v1/rpc/get_auth_user_id`,{
+          method:'POST',
+          headers:{apikey:window._sbAnon||'','Content-Type':'application/json'},
+          body:JSON.stringify({user_email:authEmail})
+        }).catch(()=>null);
+        const existingId = rpcRes?.ok ? await rpcRes.json().catch(()=>null) : null;
+        if(existingId){
+          await sb.from('usuarios').insert({email:username, rol:'nurse', activo:true, funcionario_id:func.id, auth_user_id:existingId, must_change_password:true}).catch(()=>{});
+          existingEmails.add(username); created++; continue;
+        }
+      }
+      errorList.push(`${username}: ${authErr.message}`); continue;
+    }
     const authUserId = authData?.user?.id||null;
     // Insertar en tabla usuarios
-    const role = func.tipo==='suplente' ? 'nurse' : 'nurse';
     const {error:uErr} = await sb.from('usuarios').insert({
-      email:username, rol:role, activo:true, funcionario_id:func.id,
+      email:username, rol:'nurse', activo:true, funcionario_id:func.id,
       auth_user_id:authUserId, must_change_password:true
     });
-    if(uErr){ console.warn('[bulkCreate] insert error:', username, uErr.message); errors++; continue; }
+    if(uErr){ errorList.push(`${username} (BD): ${uErr.message}`); continue; }
     existingEmails.add(username);
     created++;
   }
@@ -5501,11 +5526,12 @@ async function bulkCreateUsers(){
   const {data:freshUsers} = await sb.from('usuarios').select('id, email, rol, activo, must_change_password, auth_user_id, funcionario_id, funcionario:funcionario_id(id,apellido,nombre,email,sector:sector_id(nombre),clinica:clinica_id(nombre))');
   if(freshUsers) DB.usuarios = freshUsers;
   renderUsers();
-  const msg = [
-    created ? `${created} creados` : '',
-    skipped ? `${skipped} omitidos (username duplicado)` : '',
-    errors  ? `${errors} errores (ver consola)` : ''
+  const parts = [
+    created  ? `${created} creados` : '',
+    skipped  ? `${skipped} ya existían` : '',
+    errorList.length ? `${errorList.length} con error` : ''
   ].filter(Boolean).join(' · ');
-  toast(errors?'wa':'ok', `Usuarios creados: ${created}`, msg||'Proceso finalizado.');
+  toast(errorList.length?'wa':'ok', `Proceso finalizado`, parts||'Sin cambios.');
+  if(errorList.length) console.warn('[bulkCreate] Errores:\n'+errorList.join('\n'));
 }
 

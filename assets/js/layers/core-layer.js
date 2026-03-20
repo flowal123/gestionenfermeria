@@ -127,10 +127,14 @@ async function doLogin(){
       const {data:uRow, error:uErr} = await sb.from('usuarios')
         .select('rol, activo, must_change_password, funcionario_id, funcionario:funcionario_id(apellido, nombre, sector:sector_id(nombre))')
         .eq('email', userInp)
-        .eq('activo', true)
         .maybeSingle();
       if(uErr || !uRow){
-        toast('er','Sin acceso','No tenés un usuario activo en el sistema. Contactá al administrador.');
+        toast('er','Sin acceso','Tu usuario no está registrado en el sistema. Contactá al administrador.');
+        await sb.auth.signOut();
+        return;
+      }
+      if(!uRow.activo){
+        toast('er','Cuenta deshabilitada','Tu acceso fue deshabilitado. Contactá al administrador.');
         await sb.auth.signOut();
         return;
       }
