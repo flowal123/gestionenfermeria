@@ -5482,6 +5482,48 @@ async function saveResetPass(){
   }
 }
 
+// ........................................................
+// MIGRAR CUENTAS AUTH AL DOMINIO @guardiapp.app
+// ........................................................
+async function migrateAuthAccounts(){
+  if(!sb){ toast('er','Sin conexión',''); return; }
+  appConfirm(
+    'Migrar cuentas Auth',
+    'Esto actualizará TODOS los usuarios de Supabase Auth que no usen @guardiapp.app al dominio correcto. Operación segura, no cambia contraseñas. ¿Continuar?',
+    async () => {
+      const btn = document.querySelector('button[onclick="migrateAuthAccounts()"]');
+      if(btn){ btn.disabled=true; btn.textContent='Migrando...'; }
+      try {
+        const { data:{ session } } = await sb.auth.getSession();
+        const token = session?.access_token;
+        if(!token){ toast('er','Sin sesión','Recargá e intentá de nuevo.'); return; }
+        const res = await fetch('/.netlify/functions/admin-migrate-auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+        });
+        const result = await res.json();
+        if(!res.ok){ toast('er','Error', result.error||res.status); return; }
+        const { total, migrated, skipped, errors } = result;
+        if(migrated > 0){
+          toast('ok', `${migrated} cuenta(s) migradas`, `${skipped} ya correctas · ${errors} errores de ${total} total`);
+          await sb.from('usuarios').select('*').limit(1); // trigger reload
+        } else if(errors > 0){
+          toast('er', `${errors} error(es)`, `Revisá la consola para detalles`);
+          console.error('[migrateAuth] errors:', result.detail?.errors);
+        } else {
+          toast('ok', 'Todo en orden', `Todas las ${total} cuentas ya usan @guardiapp.app`);
+        }
+        console.log('[migrateAuth] result:', result);
+      } catch(e){
+        toast('er','Error inesperado', e.message);
+      } finally {
+        if(btn){ btn.disabled=false; btn.textContent='🔧 Migrar cuentas'; }
+      }
+    },
+    'Migrar'
+  );
+}
+
 // Paso 1: abrir modal con confirmación previa
 async function bulkCreateUsers(){
   if(!sb){ toast('er','Sin conexión',''); return; }
