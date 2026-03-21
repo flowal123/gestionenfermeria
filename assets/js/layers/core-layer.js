@@ -509,9 +509,9 @@ async function submitPasswordChange(){
   try {
     const {error} = await sb.auth.updateUser({ password: newPass });
     if(error){ toast('er','Error al guardar','No se pudo actualizar la contraseña: '+error.message); return; }
-    // Marcar must_change_password = false (ignorar error silencioso — no bloquea el login)
-    const {error: dbErr} = await sb.from('usuarios').update({ must_change_password: false }).eq('email', cUser.email);
-    if(dbErr) console.warn('[submitPasswordChange] DB update failed:', dbErr.message);
+    // Marcar must_change_password = false via RPC (SECURITY DEFINER — evita bloqueo de RLS)
+    const {error: dbErr} = await sb.rpc('clear_must_change_password');
+    if(dbErr) console.warn('[submitPasswordChange] RPC failed:', dbErr.message);
     // Limpiar campos y cerrar modal
     ['cpNewPass','cpConfirm'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
     closeM('changePassM');
