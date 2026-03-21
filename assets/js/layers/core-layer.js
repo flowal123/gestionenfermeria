@@ -302,12 +302,12 @@ function go(id){
   if(id==='notifications') renderNotifications();
   if(id==='hrReport')    renderHR();
   if(id==='users')       renderUsers();
-  if(id==='mant')        { renderSectors(); renderMotivos(); }
+  if(id==='mant')        { renderClinicas(); renderSectors(); renderMotivos(); }
   populateSels();
 }
 
 function switchMantTab(tab){
-  ['sectors','motivos'].forEach(t=>{
+  ['clinicas','sectors','motivos'].forEach(t=>{
     document.getElementById('mant-'+t).style.display = t===tab?'block':'none';
     document.getElementById('mt-'+t).classList.toggle('act', t===tab);
   });
@@ -512,6 +512,16 @@ function populateSels(){
     if(eTitSecEl){ const cur=eTitSecEl.value; eTitSecEl.innerHTML='<option value="">Seleccionar sector...</option>'+secOpts; if(cur) eTitSecEl.value=cur; }
     const empSecEl = document.getElementById('empSecFilter');
     if(empSecEl){ const cur=empSecEl.value; empSecEl.innerHTML='<option value="">Todos los sectores</option>'+secOpts; if(cur) empSecEl.value=cur; }
+  }
+  // Clinica dropdowns — populate from DB.clinicas
+  if(dbLoaded && DB.clinicas && DB.clinicas.length){
+    const cliOpts = DB.clinicas.map(c=>`<option value="${c.nombre}">${c.nombre}</option>`).join('');
+    const eCliEl = document.getElementById('eCli');
+    if(eCliEl){ const cur=eCliEl.value; eCliEl.innerHTML='<option value="">Seleccionar...</option>'+cliOpts; if(cur) eCliEl.value=cur; }
+    const sSectorCliEl = document.getElementById('sSectorClinica');
+    if(sSectorCliEl){ const cur=sSectorCliEl.value; sSectorCliEl.innerHTML='<option value="">Sin clínica asignada</option>'+DB.clinicas.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join(''); if(cur) sSectorCliEl.value=cur; }
+    const genCliEl = document.getElementById('genClinica');
+    if(genCliEl){ const cur=genCliEl.value; genCliEl.innerHTML='<option value="">Todas las clínicas</option>'+cliOpts; if(cur) genCliEl.value=cur; }
   }
 }
 

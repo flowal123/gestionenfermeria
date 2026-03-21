@@ -2859,9 +2859,12 @@ async function startGen(){
   }
   const _now=new Date();
   const mesVal=document.getElementById('genMes')?.value||`${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][_now.getMonth()]} ${_now.getFullYear()}`;
+  const genClinicaNombre = document.getElementById('genClinica')?.value||'';
+  const genClinicaObj = genClinicaNombre ? (DB.clinicas||[]).find(c=>c.nombre===genClinicaNombre) : null;
+  const genClinicaId = genClinicaObj?.id||null;
   const parsed=parseMesLabel(mesVal)||{year:_now.getFullYear(),month:_now.getMonth()};
-  if(GENS.find(g=>g.mes===mesVal&&g.estado!=='cancelada')){
-    toast('wa','Ya existe','Este mes ya fue generado. Buscalo en el historial para validar.'); return;
+  if(GENS.find(g=>g.mes===mesVal&&g.estado!=='cancelada'&&(!genClinicaId||g.clinica_id===genClinicaId))){
+    toast('wa','Ya existe','Este mes ya fue generado para esta clínica. Buscalo en el historial para validar.'); return;
   }
 
   document.getElementById('genIdle').style.display='none';
@@ -2888,9 +2891,20 @@ async function startGen(){
   const records=[];
   let alert7=0, cmpCount=0;
 
+  // Filtrar funcionarios por clínica seleccionada
+  const genFuncionarios = genClinicaId
+    ? DB.funcionarios.filter(f=>f.clinica_id===genClinicaId || f.clinica?.nombre===genClinicaNombre)
+    : DB.funcionarios;
+  if(!genFuncionarios.length){
+    toast('wa','Sin funcionarios','No hay funcionarios para la clínica seleccionada.');
+    document.getElementById('genIdle').style.display='block';
+    document.getElementById('genRun').classList.add('gone');
+    return;
+  }
+
   // Step 1: Generar turnos por patrón (fijos)
   await markStep(1);
-  for(const f of DB.funcionarios){
+  for(const f of genFuncionarios){
     const ph=getPatronVigente(f.id, primerDia);
     const patron     =(ph?.patron)    ||f.patron    ||'LV';
     const cicloRef   =(ph?.ciclo_ref) ||f.ciclo_ref ||null;
@@ -3002,7 +3016,8 @@ async function startGen(){
   if(sb){
     const savedGen=await saveGeneracion({
       mes:mesVal, mes_num:month+1, anio:year, estado:'borrador',
-      func_count:DB.funcionarios.length, alertas_7:alert7,
+      func_count:genFuncionarios.length, alertas_7:alert7,
+      clinica_id:genClinicaId||null,
       created_by:cUser?.name||''
     });
     genId=savedGen?.id||null;
@@ -3057,10 +3072,11 @@ function renderGenHistory(){
       : `<button class="btn bg xs" onclick="previewGen(${i})">👁 Ver</button>
          <button class="btn bg xs" onclick="downloadGenXLSX(${i})">⬇ Excel</button>
          <button class="btn bd xs" onclick="deleteGen(${i})" title="Eliminar esta generación y sus turnos">🗑</button>`;
+    const genCliNombre = g.clinica_id ? ((DB.clinicas||[]).find(c=>c.id===g.clinica_id)?.nombre||'—') : 'Todas';
     return `<tr>
       <td class="mn">${g.fecha}</td>
       <td><strong>${genLabel(g)}</strong></td>
-      <td>Todas</td>
+      <td>${genCliNombre}</td>
       <td>${g.func}</td>
       <td><span class="chip ${g.alertas>0?'ca':'cn'}">${g.alertas>0?g.alertas+' alertas':'Sin alertas'}</span></td>
       <td>${stChip}</td>
@@ -5386,37 +5402,121 @@ async function sendCustomNotif(){
 }
 
 // ........................................................
+// CLINICAS CRUD
+// ........................................................
+function renderClinicas(){
+  if(!dbLoaded){ document.getElementById('clinicasBody').innerHTML='<tr><td colspan="5" style="color:var(--t3);padding:20px;text-align:center">Cargando...</td></tr>'; return; }
+  const funcsAll = [...(DB.funcionariosAll||[]), ...(DB.suplentesAll||[])];
+  const rows = (DB.clinicas||[]).map(c=>{
+    const sectCount = (DB.sectores||[]).filter(s=>s.clinica_id===c.id).length;
+    const funcCount = funcsAll.filter(f=>f.clinica_id===c.id || f.clinica?.nombre===c.nombre).length;
+    return `<tr>
+      <td><strong>${c.nombre}</strong></td>
+      <td>${c.codigo||'—'}</td>
+      <td>${sectCount}</td>
+      <td>${funcCount}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn bg sm" onclick="openClinicaModal('${c.id}')">✏️ Editar</button>
+        <button class="btn sm" style="color:var(--red)" onclick="deleteClinica('${c.id}','${c.nombre.replace(/'/g,"\\'")}')">🗑</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5" style="color:var(--t3);padding:20px;text-align:center">No hay clínicas cargadas</td></tr>';
+  document.getElementById('clinicasBody').innerHTML = rows;
+}
+
+function openClinicaModal(id){
+  document.getElementById('sClinicaId').value = id||'';
+  if(id){
+    const c = (DB.clinicas||[]).find(x=>x.id===id);
+    document.getElementById('clinicaMTitle').textContent = '🏨 Editar Clínica';
+    document.getElementById('sClinicaNombre').value = c?.nombre||'';
+    document.getElementById('sClinicaCodigo').value = c?.codigo||'';
+  } else {
+    document.getElementById('clinicaMTitle').textContent = '🏨 Nueva Clínica';
+    document.getElementById('sClinicaNombre').value = '';
+    document.getElementById('sClinicaCodigo').value = '';
+  }
+  openM('clinicaM');
+}
+
+async function saveClinica(){
+  if(!sb){ toast('er','Sin conexión','Supabase no iniciado'); return; }
+  const id = document.getElementById('sClinicaId').value||null;
+  const nombre = document.getElementById('sClinicaNombre').value.trim();
+  const codigo = document.getElementById('sClinicaCodigo').value.trim().toUpperCase();
+  if(!nombre){ toast('wa','Nombre requerido','Ingresá el nombre de la clínica'); return; }
+  let error;
+  if(id){
+    ({error} = await sb.from('clinicas').update({nombre,codigo}).eq('id',id));
+  } else {
+    ({error} = await sb.from('clinicas').insert({nombre,codigo}));
+  }
+  if(error){ toast('er','Error guardando clínica',error.message); return; }
+  toast('ok', id?'Clínica actualizada':'Clínica creada', nombre);
+  closeM('clinicaM');
+  const {data} = await sb.from('clinicas').select('id,nombre,codigo').order('nombre');
+  if(data){ DB.clinicas = data; populateSels(); }
+  renderClinicas();
+}
+
+async function deleteClinica(id, nombre){
+  if(!sb){ toast('er','Sin conexión','Supabase no iniciado'); return; }
+  const funcsAll = [...(DB.funcionariosAll||[]), ...(DB.suplentesAll||[])];
+  const funcCount = funcsAll.filter(f=>f.clinica_id===id || f.clinica?.nombre===nombre).length;
+  if(funcCount > 0){ toast('wa','No se puede eliminar',`${funcCount} funcionario(s) pertenecen a esta clínica`); return; }
+  const sectCount = (DB.sectores||[]).filter(s=>s.clinica_id===id).length;
+  if(sectCount > 0){ toast('wa','No se puede eliminar',`${sectCount} sector(es) están asignados a esta clínica`); return; }
+  if(!(await new Promise(r => appConfirm('Eliminar clínica', `¿Eliminar la clínica "${nombre}"?`, r, 'Eliminar')))) return;
+  const {error} = await sb.from('clinicas').delete().eq('id',id);
+  if(error){ toast('er','Error eliminando clínica',error.message); return; }
+  toast('ok','Clínica eliminada',nombre);
+  DB.clinicas = (DB.clinicas||[]).filter(c=>c.id!==id);
+  populateSels();
+  renderClinicas();
+}
+
+// ........................................................
 // SECTORES CRUD
 // ........................................................
 function renderSectors(){
-  if(!dbLoaded){ document.getElementById('sectorsBody').innerHTML='<tr><td colspan="4" style="color:var(--t3);padding:20px;text-align:center">Cargando...</td></tr>'; return; }
+  if(!dbLoaded){ document.getElementById('sectorsBody').innerHTML='<tr><td colspan="5" style="color:var(--t3);padding:20px;text-align:center">Cargando...</td></tr>'; return; }
   const funcsAll = [...(DB.funcionariosAll||[]), ...(DB.suplentesAll||[])];
   const rows = (DB.sectores||[]).map(s=>{
     const count = funcsAll.filter(f=>f.sector?.nombre===s.nombre).length;
+    const clinicaNombre = s.clinica?.nombre || (DB.clinicas||[]).find(c=>c.id===s.clinica_id)?.nombre || '—';
     return `<tr>
       <td><strong>${s.nombre}</strong></td>
       <td>${s.codigo||'—'}</td>
+      <td>${clinicaNombre}</td>
       <td>${count}</td>
       <td style="text-align:right;white-space:nowrap">
         <button class="btn bg sm" onclick="openSectorModal('${s.id}')">✏️ Editar</button>
         <button class="btn sm" style="color:var(--red)" onclick="deleteSector('${s.id}','${s.nombre.replace(/'/g,"\\'")}')">🗑</button>
       </td>
     </tr>`;
-  }).join('') || '<tr><td colspan="4" style="color:var(--t3);padding:20px;text-align:center">No hay sectores cargados</td></tr>';
+  }).join('') || '<tr><td colspan="5" style="color:var(--t3);padding:20px;text-align:center">No hay sectores cargados</td></tr>';
   document.getElementById('sectorsBody').innerHTML = rows;
 }
 
 function openSectorModal(id){
+  // Populate clinica dropdown first
+  const sSectorCliEl = document.getElementById('sSectorClinica');
+  if(sSectorCliEl){
+    sSectorCliEl.innerHTML = '<option value="">Sin clínica asignada</option>' +
+      (DB.clinicas||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+  }
   document.getElementById('sSectorId').value = id||'';
   if(id){
     const s = (DB.sectores||[]).find(x=>x.id===id);
     document.getElementById('sectorMTitle').textContent = '🏥 Editar Sector';
     document.getElementById('sSectorNombre').value = s?.nombre||'';
     document.getElementById('sSectorCodigo').value = s?.codigo||'';
+    if(sSectorCliEl) sSectorCliEl.value = s?.clinica_id||'';
   } else {
     document.getElementById('sectorMTitle').textContent = '🏥 Nuevo Sector';
     document.getElementById('sSectorNombre').value = '';
     document.getElementById('sSectorCodigo').value = '';
+    if(sSectorCliEl) sSectorCliEl.value = '';
   }
   openM('sectorM');
 }
@@ -5426,17 +5526,19 @@ async function saveSector(){
   const id = document.getElementById('sSectorId').value||null;
   const nombre = document.getElementById('sSectorNombre').value.trim().toUpperCase();
   const codigo = document.getElementById('sSectorCodigo').value.trim().toUpperCase();
+  const clinica_id = document.getElementById('sSectorClinica')?.value||null;
   if(!nombre){ toast('wa','Nombre requerido','Ingresá el nombre del sector'); return; }
+  const payload = {nombre, codigo, clinica_id: clinica_id||null};
   let error;
   if(id){
-    ({error} = await sb.from('sectores').update({nombre,codigo}).eq('id',id));
+    ({error} = await sb.from('sectores').update(payload).eq('id',id));
   } else {
-    ({error} = await sb.from('sectores').insert({nombre,codigo}));
+    ({error} = await sb.from('sectores').insert(payload));
   }
   if(error){ toast('er','Error guardando sector',error.message); return; }
   toast('ok',id?'Sector actualizado':'Sector creado',nombre);
   closeM('sectorM');
-  const {data} = await sb.from('sectores').select('id,nombre,codigo').order('nombre');
+  const {data} = await sb.from('sectores').select('id,nombre,codigo,clinica_id,clinica:clinicas(nombre)').order('nombre');
   if(data){ DB.sectores = data; populateSels(); }
   renderSectors();
 }
