@@ -46,7 +46,7 @@
     <div class="ni" id="n-notifications" onclick="go('notifications')"><span class="ni-ic">📨</span>Notificaciones</div>
     <div class="ni" id="n-hrReport" onclick="go('hrReport')"><span class="ni-ic">📈</span>Reporte RRHH</div>
     <div class="ni" id="n-users" onclick="go('users')"><span class="ni-ic">🛡️</span>Usuarios y Permisos</div>
-    <div class="ni" id="n-sectors" onclick="go('sectors')"><span class="ni-ic">🏥</span>Sectores</div>
+    <div class="ni" id="n-mant" onclick="go('mant')"><span class="ni-ic">🔧</span>Mantenimiento</div>
     <div class="sb-bot">
       <div class="uav" id="sAv">NL</div>
       <div class="umeta"><strong id="sName">—</strong><span id="sEmail">—</span></div>
@@ -408,20 +408,26 @@
   <div id="usersCount" style="font-size:11px;color:var(--t3);margin-top:6px;text-align:right"></div>
 </div>
 
-<!-- SECTORS -->
-<div class="view" id="v-sectors">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-    <span style="font-size:12px;color:var(--t2)">Gestión de sectores de la institución.</span>
-    <button class="btn bp sm" onclick="openSectorModal()">＋ Nuevo Sector</button>
+<!-- MANTENIMIENTO -->
+<div class="view" id="v-mant">
+  <div class="tabs">
+    <div class="tab act" id="mt-sectors" onclick="switchMantTab('sectors')">Sectores</div>
+    <div class="tab" id="mt-motivos" onclick="switchMantTab('motivos')">Motivos de Licencia</div>
   </div>
-  <div class="tw"><table><thead><tr><th>Nombre</th><th>Código</th><th>Funcionarios</th><th></th></tr></thead><tbody id="sectorsBody"></tbody></table></div>
 
-  <div style="margin-top:28px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div>
-        <div style="font-size:13px;font-weight:700;color:var(--text)">Motivos de Licencia Especial</div>
-        <div style="font-size:11px;color:var(--t3);margin-top:2px">Motivos disponibles al cargar una Licencia de tipo Libre Especial.</div>
-      </div>
+  <!-- Tab: Sectores -->
+  <div id="mant-sectors">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <span style="font-size:12px;color:var(--t2)">Gestión de sectores de la institución.</span>
+      <button class="btn bp sm" onclick="openSectorModal()">＋ Nuevo Sector</button>
+    </div>
+    <div class="tw"><table><thead><tr><th>Nombre</th><th>Código</th><th>Funcionarios</th><th></th></tr></thead><tbody id="sectorsBody"></tbody></table></div>
+  </div>
+
+  <!-- Tab: Motivos -->
+  <div id="mant-motivos" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <span style="font-size:12px;color:var(--t2)">Motivos disponibles al cargar una Licencia de tipo Libre Especial.</span>
       <button class="btn bp sm" onclick="openMotivoModal()">＋ Nuevo Motivo</button>
     </div>
     <div class="tw"><table><thead><tr><th>Descripción</th><th>Estado</th><th></th></tr></thead><tbody id="motivosBody"></tbody></table></div>

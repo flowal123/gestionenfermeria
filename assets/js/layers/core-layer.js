@@ -21,7 +21,7 @@ const ROLES={
   nurse:    {label:'Enfermería',icon:'👩‍⚕️',chip:'cp'},
 };
 const PERMS={
-  admin:    ['dashboard','schedule','mySchedule','employees','licenses','trades','alerts','generation','notifications','hrReport','users','sectors'],
+  admin:    ['dashboard','schedule','mySchedule','employees','licenses','trades','alerts','generation','notifications','hrReport','users','mant'],
   supervisor:['dashboard','schedule','mySchedule','employees','licenses','trades','alerts','generation','notifications','hrReport'],
   nurse:    ['mySchedule','trades','alerts'],
 };
@@ -279,7 +279,7 @@ function applyPerms(){
 // ........................................................
 // NAVIGATION
 // ........................................................
-const PTITLES={dashboard:'Dashboard General',schedule:'Planificación Mensual',mySchedule:'Mi Agenda Personal',employees:'Gestión de Funcionarios',licenses:'Licencias y Ausencias',trades:'Cambios de Turno',alerts:'Centro de Alertas',generation:'Generación Automática',notifications:'Notificaciones',hrReport:'Reporte RRHH',users:'Usuarios y Permisos',sectors:'Sectores'};
+const PTITLES={dashboard:'Dashboard General',schedule:'Planificación Mensual',mySchedule:'Mi Agenda Personal',employees:'Gestión de Funcionarios',licenses:'Licencias y Ausencias',trades:'Cambios de Turno',alerts:'Centro de Alertas',generation:'Generación Automática',notifications:'Notificaciones',hrReport:'Reporte RRHH',users:'Usuarios y Permisos',mant:'Mantenimiento'};
 
 function go(id){
   if(!PERMS[cRole].includes(id)){toast('wa','Acceso restringido','Sin permiso para esta sección.');return;}
@@ -302,8 +302,15 @@ function go(id){
   if(id==='notifications') renderNotifications();
   if(id==='hrReport')    renderHR();
   if(id==='users')       renderUsers();
-  if(id==='sectors')     { renderSectors(); renderMotivos(); }
+  if(id==='mant')        { renderSectors(); renderMotivos(); }
   populateSels();
+}
+
+function switchMantTab(tab){
+  ['sectors','motivos'].forEach(t=>{
+    document.getElementById('mant-'+t).style.display = t===tab?'block':'none';
+    document.getElementById('mt-'+t).classList.toggle('act', t===tab);
+  });
 }
 
 // ........................................................
