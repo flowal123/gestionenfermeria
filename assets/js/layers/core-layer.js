@@ -128,11 +128,23 @@ async function doLogin(){
         toast('er','Acceso denegado', `${msg} (${error.message})`);
         return;
       }
+      // Derivar username desde el email real del Auth (robusto ante dominios mixtos)
+      const authRealEmail = data?.user?.email || authEmail;
+      const usernameKey = authRealEmail.replace(/@.+$/, '');
       // Obtener rol y datos del funcionario desde la tabla usuarios
-      const {data:uRow, error:uErr} = await sb.from('usuarios')
+      // Buscar primero por username (sin dominio), fallback por email completo
+      let {data:uRow, error:uErr} = await sb.from('usuarios')
         .select('rol, activo, must_change_password, funcionario_id, funcionario:funcionario_id(apellido, nombre, sector:sector_id(nombre))')
-        .eq('email', userInp)
+        .eq('email', usernameKey)
         .maybeSingle();
+      // Fallback: buscar por email completo si no encontró por username
+      if(!uRow && !uErr){
+        const fb = await sb.from('usuarios')
+          .select('rol, activo, must_change_password, funcionario_id, funcionario:funcionario_id(apellido, nombre, sector:sector_id(nombre))')
+          .eq('email', authRealEmail)
+          .maybeSingle();
+        if(fb.data){ uRow = fb.data; uErr = null; }
+      }
       if(uErr || !uRow){
         toast('er','Sin acceso','Tu usuario no está registrado en el sistema. Contactá al administrador.');
         await sb.auth.signOut();
@@ -146,9 +158,9 @@ async function doLogin(){
       cRole = uRow.rol || 'nurse';
       const f = uRow.funcionario;
       cUser = {
-        name:           f ? `${f.apellido}${f.nombre?' '+f.nombre:''}` : userInp,
-        email:          userInp,
-        username:       userInp,
+        name:           f ? `${f.apellido}${f.nombre?' '+f.nombre:''}` : usernameKey,
+        email:          usernameKey,
+        username:       usernameKey,
         funcionario_id: uRow.funcionario_id||null,
         initials:       f ? (f.apellido?.[0]||'')+(f.nombre?.[0]||'?') : (userInp[0]||'?').toUpperCase(),
         sector:         f?.sector?.nombre||'—',
