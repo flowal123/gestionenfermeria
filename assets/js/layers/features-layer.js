@@ -1326,6 +1326,7 @@ function filterT(id,val){document.querySelectorAll(`#${id} tr`).forEach(r=>{r.st
 // ........................................................
 let LIC_FIL = 'all';
 let COB_FIL = { mes: '', cliId: 'all', secId: 'all' };
+let LAR_FIL = { year: null, cli: 'all', sec: 'all' };
 
 function setLicFil(btn, val){
   LIC_FIL = val;
@@ -1675,6 +1676,7 @@ function renderLics(){
 
 function cobSetFil(key, val){
   COB_FIL[key] = val;
+  if(key==='cliId') COB_FIL.secId='all'; // reset sector when clinica changes
   renderCobertura();
 }
 
@@ -1722,11 +1724,12 @@ function renderCobertura(){
   if(COB_FIL.secId!=='all') pending=pending.filter(l=>
     l.funcionario?.sector?.nombre===COB_FIL.secId);
 
-  // ── Clínica / Sector options — from DB.clinicas / DB.sectores (deduplicados) ──
+  // ── Clínica / Sector options — cascaded ──────────────────────────────────
   const cliOpts='<option value="all">Todas las clínicas</option>'+
     (DB.clinicas||[]).map(c=>`<option value="${c.nombre}"${c.nombre===COB_FIL.cliId?' selected':''}>${c.nombre}</option>`).join('');
+  const visibleSecs=_larSectorsForCli(COB_FIL.cliId);
   const secOpts='<option value="all">Todos los sectores</option>'+
-    (DB.sectores||[]).map(s=>`<option value="${s.nombre}"${s.nombre===COB_FIL.secId?' selected':''}>${s.nombre}</option>`).join('');
+    visibleSecs.map(s=>`<option value="${s.nombre}"${s.nombre===COB_FIL.secId?' selected':''}>${s.nombre}</option>`).join('');
 
   // ── Build agenda: group licencias by "anchor day" in selected month ───────
   // Anchor = max(fecha_desde, mesFrom) — so ongoing licencias appear from day 1
@@ -1824,15 +1827,69 @@ function renderCobertura(){
   body.innerHTML=filterBar+`<div>${agendaHtml}</div>`;
 }
 
+function _larSectorsForCli(cliNombre){
+  if(!cliNombre || cliNombre==='all') return DB.sectores||[];
+  const cliId = (DB.clinicas||[]).find(c=>c.nombre===cliNombre)?.id;
+  return (DB.sectores||[]).filter(s=>cliId ? s.clinica_id===cliId : s.clinica?.nombre===cliNombre);
+}
+
+function updateLarSecOpts(){
+  const sel=document.getElementById('larSecFil');
+  if(!sel) return;
+  const sectors=_larSectorsForCli(LAR_FIL.cli);
+  sel.innerHTML='<option value="all">Todos los sectores</option>'+
+    sectors.map(s=>`<option value="${s.nombre}"${s.nombre===LAR_FIL.sec?' selected':''}>${s.nombre}</option>`).join('');
+  // If previously selected sector no longer belongs to new clinica, reset
+  if(LAR_FIL.sec!=='all' && !sectors.find(s=>s.nombre===LAR_FIL.sec)){
+    LAR_FIL.sec='all';
+    sel.value='all';
+  }
+}
+
+function setLarFil(key, val){
+  LAR_FIL[key]=val;
+  if(key==='cli'){
+    LAR_FIL.sec='all';
+    updateLarSecOpts();
+  }
+  renderLAR();
+}
+
 function renderLAR(){
   const body=document.getElementById('larBody');if(!body)return;
   if(dbLoaded && DB.funcionarios.length){
-    const years=getAvailableMonthsGlobal().map(m=>m.year);
-    const year=years.length?Math.max(...years):new Date().getFullYear();
+    // ── Year selector ─────────────────────────────────────────────
+    const years=[...new Set(getAvailableMonthsGlobal().map(m=>m.year))].sort((a,b)=>b-a);
+    if(!years.length) years.push(new Date().getFullYear());
+    if(!LAR_FIL.year || !years.includes(LAR_FIL.year)) LAR_FIL.year=years[0];
+    const yearSel=document.getElementById('larYearFil');
+    if(yearSel && yearSel.innerHTML===''){
+      yearSel.innerHTML=years.map(y=>`<option value="${y}"${y===LAR_FIL.year?' selected':''}>${y}</option>`).join('');
+    } else if(yearSel) yearSel.value=LAR_FIL.year;
+
+    // ── Clinica selector ──────────────────────────────────────────
+    const cliSel=document.getElementById('larCliFil');
+    if(cliSel){
+      cliSel.innerHTML='<option value="all">Todas las clínicas</option>'+
+        (DB.clinicas||[]).map(c=>`<option value="${c.nombre}"${c.nombre===LAR_FIL.cli?' selected':''}>${c.nombre}</option>`).join('');
+    }
+
+    // ── Sector selector (cascaded) ────────────────────────────────
+    updateLarSecOpts();
+    const secSel=document.getElementById('larSecFil');
+    if(secSel) secSel.value=LAR_FIL.sec;
+
+    // ── Filter funcionarios ───────────────────────────────────────
+    let funcs=DB.funcionarios;
+    if(LAR_FIL.cli!=='all') funcs=funcs.filter(f=>f.clinica?.nombre===LAR_FIL.cli);
+    if(LAR_FIL.sec!=='all') funcs=funcs.filter(f=>f.sector?.nombre===LAR_FIL.sec);
+
+    const year=LAR_FIL.year;
     const byFunc=new Map();
-    DB.funcionarios.forEach(f=>{
+    funcs.forEach(f=>{
       byFunc.set(String(f.id),{
         n:fNombre(f),
+        cli:f.clinica?.nombre||'—',
         sec:f.sector?.nombre||'—',
         total:Number(f?.lar_total||f?.dias_lar||20)||20,
         m:Array(12).fill(0),
@@ -1857,15 +1914,24 @@ function renderLAR(){
         }
       });
     const rows=[...byFunc.values()].sort((a,b)=>a.n.localeCompare(b.n,'es'));
+    if(!rows.length){
+      body.innerHTML=`<tr><td colspan="17" style="text-align:center;padding:20px;color:var(--t2)">Sin funcionarios para los filtros seleccionados.</td></tr>`;
+      return;
+    }
     body.innerHTML=rows.map(l=>{
       const used=l.m.reduce((a,b)=>a+b,0);const saldo=l.total-used;
-      return `<tr><td><strong>${l.n}</strong></td><td style="font-size:11px">${l.sec}</td><td class="mn">${l.total}</td>
-      ${l.m.map(v=>`<td class="mn" style="color:${v>0?'var(--green)':'var(--t3)'}">${v||'—'}</td>`).join('')}
-      <td class="mn" style="color:${saldo>=0?'var(--green)':'var(--red)'};font-weight:700">${saldo}</td></tr>`;
+      return `<tr>
+        <td><strong>${l.n}</strong></td>
+        <td style="font-size:11px;color:var(--t2)">${l.cli}</td>
+        <td style="font-size:11px">${l.sec}</td>
+        <td class="mn">${l.total}</td>
+        ${l.m.map(v=>`<td class="mn" style="color:${v>0?'var(--green)':'var(--t3)'}">${v||'—'}</td>`).join('')}
+        <td class="mn" style="color:${saldo>=0?'var(--green)':'var(--red)'};font-weight:700">${saldo}</td>
+      </tr>`;
     }).join('');
     return;
   }
-  body.innerHTML=`<tr><td colspan="15" style="text-align:center;padding:20px;color:var(--t2)">Sin datos de licencias LAR disponibles. Sincronizá la base de datos.</td></tr>`;
+  body.innerHTML=`<tr><td colspan="17" style="text-align:center;padding:20px;color:var(--t2)">Sin datos de licencias LAR disponibles. Sincronizá la base de datos.</td></tr>`;
 }
 
 function resetLicForm(){

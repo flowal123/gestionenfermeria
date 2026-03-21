@@ -191,14 +191,23 @@
     <div id="coberturaBody"></div>
   </div>
   <div class="tp" id="tLicL">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <span style="font-size:12px;color:var(--t2)">Planificación LAR anual. Cargar al inicio del año para cada funcionario.</span>
       <div style="display:flex;gap:6px">
         <input type="file" id="licImportFile" accept=".xlsx,.xls" style="display:none" onchange="handleLicImport(event)">
         <button class="btn bp sm" onclick="document.getElementById('licImportFile').click()">⬆ Importar Excel RRHH</button>
       </div>
     </div>
-    <div class="tw"><table><thead><tr><th>Funcionario</th><th>Sector</th><th>Total</th><th>ENE</th><th>FEB</th><th>MAR</th><th>ABR</th><th>MAY</th><th>JUN</th><th>JUL</th><th>AGO</th><th>SEP</th><th>OCT</th><th>NOV</th><th>DIC</th><th>Saldo</th></tr></thead><tbody id="larBody"></tbody></table></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <select id="larYearFil" onchange="setLarFil('year',this.value)" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:6px 10px;border-radius:var(--r);font-size:12px"></select>
+      <select id="larCliFil" onchange="setLarFil('cli',this.value)" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:6px 10px;border-radius:var(--r);font-size:12px">
+        <option value="all">Todas las clínicas</option>
+      </select>
+      <select id="larSecFil" onchange="setLarFil('sec',this.value)" style="background:var(--bg3);border:1px solid var(--b);color:var(--text);padding:6px 10px;border-radius:var(--r);font-size:12px">
+        <option value="all">Todos los sectores</option>
+      </select>
+    </div>
+    <div class="tw"><table><thead><tr><th>Funcionario</th><th>Clínica</th><th>Sector</th><th>Total</th><th>ENE</th><th>FEB</th><th>MAR</th><th>ABR</th><th>MAY</th><th>JUN</th><th>JUL</th><th>AGO</th><th>SEP</th><th>OCT</th><th>NOV</th><th>DIC</th><th>Saldo</th></tr></thead><tbody id="larBody"></tbody></table></div>
   </div>
   <div class="tp" id="tLicN">
     <div class="card" style="max-width:520px">
@@ -688,9 +697,9 @@
 <div class="tbox" id="tbox"></div>
 
 <script src="assets/js/layers/contracts-layer.js?v=20260320e"></script>
-<script src="assets/js/layers/core-layer.js?v=20260321e"></script>
-<script src="assets/js/layers/features-layer.js?v=20260321e"></script>
-<script src="assets/js/layers/infra-layer.js?v=20260321e"></script>
+<script src="assets/js/layers/core-layer.js?v=20260321f"></script>
+<script src="assets/js/layers/features-layer.js?v=20260321f"></script>
+<script src="assets/js/layers/infra-layer.js?v=20260321f"></script>
 <script src="assets/js/layers/bootstrap-layer.js?v=20260320e"></script>
 </body>
 </html>
