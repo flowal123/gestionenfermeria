@@ -3665,7 +3665,7 @@ function renderUsers(){
   const cnt=document.getElementById('usersCount');
   if(cnt) cnt.textContent=users.length===DB.usuarios.length?`${users.length} usuarios`:`${users.length} de ${DB.usuarios.length} usuarios`;
   const rChip={admin:'cb2',supervisor:'cg',nurse:'cp'};
-  const rLabel={admin:'Admin/Gerencia',supervisor:'Supervisor',nurse:'Enfermería'};
+  const rLabel={admin:'Admin/Gerencia',supervisor:'Supervisor',nurse:'Enfermero'};
   body.innerHTML=users.map((u,i)=>`<tr>
     <td><strong>${u.name}</strong></td>
     <td class="mn" style="font-family:var(--ff-mono);font-size:10px">${u.username}</td>
@@ -3757,7 +3757,7 @@ async function toggleUser(i){
 const PDESC={
   admin:'Acceso total al sistema: planilla, empleados, licencias, cambios, generación automática, reportes RRHH, usuarios y configuración.',
   supervisor:'Planilla, empleados (su sector), licencias, cambios (aprobar/rechazar), generación automática, reportes RRHH. Sin acceso a usuarios ni config global.',
-  nurse:'Solo su agenda personal, solicitar licencias propias, solicitar cambios. Sin acceso a planilla general, otros funcionarios ni reportes.',
+  nurse:'Solo su agenda personal, solicitar licencias propias, solicitar cambios de turno. Sin acceso a planilla general, otros funcionarios ni reportes.',
 };
 function updPD(){const r=document.getElementById('newRole')?.value;const d=document.getElementById('permDesc');if(d&&r) d.textContent=PDESC[r]||'';}
 
@@ -4237,7 +4237,7 @@ async function saveUser(){
       }
       // 4. Notificar credenciales
       if(ejReady){
-        const rolesLabel={admin:'Admin / Gerencia',supervisor:'Supervisor',nurse:'Enfermería'};
+        const rolesLabel={admin:'Admin / Gerencia',supervisor:'Supervisor',nurse:'Enfermero'};
         await emailjs.send(EJ.serviceId,EJ.templateId,{
           to_email:notifEmail||EJ.testEmail,
           subject:`GuardiaApp — Acceso creado`,

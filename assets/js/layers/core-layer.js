@@ -208,7 +208,7 @@ function _finishLogin(infra, features){
   const first={admin:'dashboard',supervisor:'dashboard',nurse:'mySchedule'}[cRole]||'mySchedule';
   go(first);
   initAll();
-  toast('ok',`Bienvenida, ${cUser.name}`,`Rol: ${ri.label}`);
+  toast('ok',`Bienvenido/a, ${cUser.name}`,`Rol: ${ri.label}`);
   setTimeout(()=>features?.initEJ?.(), 300);
   if(!infra) return;
   const loadPromise = infra.loadDB ? infra.loadDB() : Promise.resolve();

@@ -1,7 +1,7 @@
 # GuardiaApp — Manual de Usuario
 
 **Versión:** 13.3
-**Dirigido a:** Personal de salud, supervisoras y administración
+**Dirigido a:** Personal de salud, supervisores y administración
 **Actualizado:** Marzo 2026
 
 ---
@@ -54,7 +54,7 @@ Centralizar en un solo lugar toda la gestión operativa del personal de enfermer
 | Perfil | Uso principal |
 |--------|---------------|
 | **Administración / Gerencia** | Configuración completa, generación de planillas, gestión de usuarios |
-| **Supervisoras** | Control de planilla, aprobación de licencias y cambios, reportes |
+| **Supervisor** | Control de planilla, aprobación de licencias y cambios, reportes |
 | **Personal de enfermería** | Ver su propia agenda, solicitar licencias y cambios de turno |
 | **Suplentes** | Consultar sus asignaciones del mes, aceptar o rechazar guardias |
 
@@ -83,7 +83,7 @@ Centralizar en un solo lugar toda la gestión operativa del personal de enfermer
 
 ### Primera vez que ingresás
 
-Si es tu primer acceso, es posible que el sistema te solicite cambiar la contraseña temporal. Elegí una contraseña segura que recuerdes y no la compartas con nadie.
+Si es tu primer acceso, el sistema te solicitará cambiar la contraseña temporal antes de continuar. Elegí una contraseña segura que recuerdes y no la compartas con nadie. Este paso es obligatorio y no puede omitirse. Si necesitás cancelar, usá el botón "Cancelar" — tu sesión se cerrará y podrás intentarlo nuevamente.
 
 ### Cierre de sesión
 
@@ -155,7 +155,7 @@ En la parte superior del menú verás un indicador que muestra si el sistema est
 
 ### 4.1 Dashboard — Panel General
 
-**Quién lo ve:** Administrador y Supervisora
+**Quién lo ve:** Administrador y Supervisor
 
 El Dashboard es la pantalla principal al ingresar. Muestra un resumen del estado operativo del mes seleccionado.
 
@@ -209,7 +209,7 @@ Más abajo encontrás tres métricas detalladas:
 
 ### 4.2 Planificación Mensual
 
-**Quién lo ve:** Administrador y Supervisora
+**Quién lo ve:** Administrador y Supervisor
 
 Muestra la planilla completa del mes seleccionado con todos los funcionarios y sus turnos asignados día a día.
 
@@ -255,34 +255,35 @@ Los turnos tienen colores diferenciados para facilitar la lectura:
 
 Es la vista personal de cada funcionario. Muestra el calendario mensual con los turnos asignados.
 
-#### Para personal de enfermería (Enfermera / Suplente)
+#### Para personal de enfermería
 
 - Verás tu agenda personal del mes actual.
-- Podés navegar entre meses con los botones de navegación.
+- Podés navegar entre meses con el selector desplegable.
 - Desde esta pantalla podés:
   - Hacer clic en **"+ Nueva Licencia"** para solicitar una ausencia
-  - Hacer clic en **"+ Cambio de Turno"** para solicitar un intercambio
+  - Hacer clic en un día con turno para iniciar una solicitud de cambio
 
 **Sección "Mis Licencias":**
-Muestra tus licencias organizadas en dos pestañas:
-- **Pendientes:** solicitudes aún no aprobadas
-- **Aprobadas:** licencias confirmadas
+Muestra tus licencias con estado:
+- **Pendiente:** solicitud aún no aprobada
+- **Aprobada:** licencia confirmada
+- **Cerrada:** licencia finalizada
 
 **Sección "Mis Cambios de Turno":**
 Muestra el estado de tus solicitudes:
-- Enviadas: esperando que el otro funcionario acepte
+- Enviadas: esperando que la otra persona acepte
 - Recibidas: alguien te propone un cambio (podés aceptar o rechazar)
 - Aprobadas: listas para aplicarse en la planilla
 
-#### Para Administrador y Supervisora
+#### Para Administrador y Supervisor
 
-Ven su propia agenda con las mismas opciones que el personal, más acceso completo al resto del sistema.
+Solo ven "Mi Agenda" si tienen un funcionario vinculado a su cuenta. Si el perfil es exclusivamente de gestión, esta sección mostrará que no hay turnos asignados.
 
 ---
 
 ### 4.4 Funcionarios
 
-**Quién lo ve:** Administrador y Supervisora
+**Quién lo ve:** Administrador y Supervisor
 
 Permite consultar, agregar y editar la información del personal de la institución.
 
@@ -290,12 +291,12 @@ Permite consultar, agregar y editar la información del personal de la instituci
 
 **Pestaña "Fijos"**
 
-Lista de todos los funcionarios de planta. Incluye buscador y filtros:
+Lista de todos los funcionarios activos de la institución. Incluye buscador y filtros:
 - **Buscar:** ingresá apellido o nombre
 - **Filtro por sector:** mostrá solo un sector
 - **Estado:** solo activos, solo inactivos, o todos
 
-La tabla muestra: nombre, clínica, sector, turno, fecha de nacimiento, teléfono, cantidad de guardias, horas/mes, horas extra, faltas y estado.
+La tabla muestra: nombre, sector, turno, fecha de nacimiento, teléfono, cantidad de guardias, horas/mes, horas extra, faltas y estado.
 
 **Pestaña "Suplentes"**
 
@@ -304,6 +305,8 @@ Lista de suplentes disponibles. La tabla incluye: nombre, antigüedad, porcentaj
 **Pestaña "Competencias"**
 
 Matriz que cruza cada funcionario (fijos y suplentes) con los sectores de la institución. Permite marcar en qué sectores tiene competencia cada persona. Esto se usa para sugerir el suplente más adecuado al cubrir una vacante.
+
+> Las competencias quedan guardadas en la base de datos y se tienen en cuenta automáticamente en la asignación de suplentes (+2 puntos de prioridad si el suplente tiene competencia en el sector requerido).
 
 #### Cómo agregar un nuevo funcionario
 
@@ -315,14 +318,13 @@ Matriz que cruza cada funcionario (fijos y suplentes) con los sectores de la ins
 | N° Funcionario | Número de legajo (ej: 565) |
 | Tipo | Fijo o Suplente |
 | Apellido, Nombre | Formato: APELLIDO, Nombre |
-| Clínica | Unidad a la que pertenece |
-| Sector | Sector asignado (lista dinámica) |
+| Sector | Sector asignado (lista dinámica desde la BD) |
 | Turno Fijo | Mañana, Tarde, Vespertino, Noche o Rotativo |
 | Hs./semana | Horas semanales (por defecto: 36) |
 | Patrón de rotación | Ver tabla abajo |
 | Fecha de Nacimiento | Se usa para asignar el turno de cumpleaños automáticamente |
 | Fecha de Ingreso | Se usa para alertas de ingreso |
-| Alerta supervisora | Días desde ingreso para notificar (por defecto: 45) |
+| Alerta supervisor | Días desde ingreso para notificar (por defecto: 45) |
 | Teléfono / WhatsApp | Para comunicación directa |
 | Email | Para envío de agendas |
 
@@ -347,13 +349,13 @@ En la tabla, hacé clic en el ícono de lápiz (editar) de la fila correspondien
 
 #### Cómo desactivar un funcionario
 
-En la tabla, hacé clic en el ícono de eliminar. El sistema no borra el registro — lo marca como inactivo. Esto conserva el historial de turnos y licencias.
+En la tabla, hacé clic en el ícono de eliminar. El sistema no borra el registro — lo marca como inactivo. Esto conserva el historial de turnos y licencias. Un funcionario inactivo no aparece en la generación de planillas.
 
 ---
 
 ### 4.5 Licencias y Ausencias
 
-**Quién lo ve:** Administrador y Supervisora (para cargar y gestionar). Personal de enfermería puede solicitar desde Mi Agenda.
+**Quién lo ve:** Administrador y Supervisor (para cargar y gestionar). Personal de enfermería puede solicitar desde Mi Agenda.
 
 Gestión integral de todas las licencias y ausencias del personal.
 
@@ -430,14 +432,14 @@ Un cambio de turno pasa por tres etapas:
 
 1. **El solicitante** envía la propuesta al receptor
 2. **El receptor** acepta o rechaza
-3. **La supervisora / administración** aprueba o rechaza definitivamente
+3. **El supervisor / administración** aprueba o rechaza definitivamente
 
 Solo cuando los tres pasos se completan con éxito, el cambio queda registrado en la planilla.
 
 #### Sección "Pendientes de Aprobación"
 
 Muestra las solicitudes que requieren alguna acción:
-- **En verde** ("Listos para aprobar"): el receptor ya aceptó, esperan aprobación de supervisora
+- **En verde** ("Listos para aprobar"): el receptor ya aceptó, esperan aprobación de supervisor
 - **En amarillo** ("Esperando al receptor"): la otra parte todavía no respondió
 
 Cada tarjeta muestra: quién solicita, turno que cede, receptor, turno que recibe y estado actual.
@@ -451,10 +453,10 @@ Tabla con todos los cambios (aprobados, rechazados, en curso).
 | Estado | Qué significa |
 |--------|---------------|
 | **Pendiente** | Esperando que el receptor acepte |
-| **Aceptado por receptor** | El receptor aceptó, falta aprobación de supervisora |
+| **Aceptado por receptor** | El receptor aceptó, falta aprobación de supervisor |
 | **Aprobado** | Cambio completo, ya aplicado en la planilla |
-| **Rechazado por receptor** | El otro funcionario no aceptó |
-| **Rechazado** | La supervisora no autorizó |
+| **Rechazado por receptor** | La otra persona no aceptó |
+| **Rechazado** | El supervisor no autorizó |
 
 #### Restricciones importantes
 
@@ -474,16 +476,16 @@ Centro de notificaciones del sistema. Muestra todos los avisos importantes orden
 
 | Tipo | Color | Quién la ve |
 |------|-------|-------------|
-| **7ª Guardia consecutiva** | Rojo | Admin, Supervisora |
-| **Vacante sin cubrir** | Amarillo | Admin, Supervisora |
-| **Cambio de turno pendiente** | Azul | Admin, Supervisora, y la Enfermera involucrada |
-| **Alerta de ingreso** | Azul | Admin, Supervisora |
+| **7ª Guardia consecutiva** | Rojo | Admin, Supervisor |
+| **Vacante sin cubrir** | Amarillo | Admin, Supervisor |
+| **Cambio de turno pendiente** | Azul | Admin, Supervisor, y el personal involucrado |
+| **Alerta de ingreso** | Azul | Admin, Supervisor |
 
 **7ª Guardia consecutiva:** Se genera automáticamente cuando el sistema detecta que un funcionario tiene 7 o más días de trabajo seguidos sin descanso. Implica la generación de horas extra obligatorias.
 
 **Vacante sin cubrir:** Aparece cuando existe una licencia activa que genera vacante pero no tiene suplente asignado todavía.
 
-**Cambio de turno pendiente:** Notifica a supervisoras cuando hay cambios listos para aprobar. A las enfermeras les avisa si alguien les propuso un intercambio.
+**Cambio de turno pendiente:** Notifica a supervisores cuando hay cambios listos para aprobar. Al personal de enfermería le avisa si alguien le propuso un intercambio.
 
 **Alerta de ingreso:** Informa cuando un funcionario cumple el hito de días desde su ingreso a la institución (por defecto: 45 días).
 
@@ -503,12 +505,13 @@ Permite crear automáticamente la planilla de guardias para un mes completo.
 
 #### Qué considera el sistema al generar
 
-- El patrón de rotación de cada funcionario (LV, LS, 4×1, etc.)
+- El patrón de rotación de cada funcionario activo (LV, LS, 4×1, etc.)
 - Las licencias LAR ya programadas para ese mes
 - Los feriados nacionales y departamentales
 - Los cumpleaños (asigna media guardia automáticamente)
 - La detección de 7ª guardia consecutiva (genera alerta inmediata)
 - La disponibilidad y prioridad de suplentes para cubrir vacantes
+- Las competencias registradas de cada funcionario
 
 #### Pasos para generar el mes
 
@@ -555,7 +558,7 @@ Antes de publicar, podés revisar la planilla generada:
 
 ### 4.9 Notificaciones
 
-**Quién lo ve:** Administrador y Supervisora
+**Quién lo ve:** Administrador y Supervisor
 
 Permite enviar las planillas mensuales aprobadas a los funcionarios por correo electrónico.
 
@@ -588,14 +591,13 @@ Al final de la sección encontrás una tabla con todos los avisos enviados, con 
 
 ### 4.10 Reporte RRHH
 
-**Quién lo ve:** Administrador y Supervisora
+**Quién lo ve:** Administrador y Supervisor
 
 Genera reportes detallados de cumplimiento, asistencia, horas trabajadas y ausentismo del personal.
 
 #### Controles del reporte
 
 - **Mes:** seleccioná el período a analizar
-- **Clínica:** filtrá por unidad institucional
 - **Descargar Excel RRHH:** exporta el reporte completo a Excel
 - **Imprimir / PDF:** usá Ctrl+P para guardar como PDF
 
@@ -612,7 +614,7 @@ Genera reportes detallados de cumplimiento, asistencia, horas trabajadas y ausen
 
 **Resumen por Clínica**
 
-Tabla completa con un renglón por funcionario. Columnas: nombre, clínica, sector, turno, guardias, horas trabajadas, objetivo, diferencia, faltas, LAR tomadas, extras y cumplimiento.
+Tabla completa con un renglón por funcionario. Columnas: nombre, sector, turno, guardias, horas trabajadas, objetivo, diferencia, faltas, LAR tomadas, extras y cumplimiento.
 
 **Detalle Día a Día**
 
@@ -638,8 +640,14 @@ Permite crear, editar y desactivar las cuentas de acceso al sistema.
 |-----|--------|
 | **Admin / Gerencia** | Acceso total: planilla, generación, RRHH, usuarios, configuración |
 | **Supervisor** | Planilla, licencias, cambios, generación, reportes RRHH |
-| **Enfermería** | Su agenda propia, solicitar licencias y cambios |
-| **Suplente** | Sus asignaciones del mes, aceptar o rechazar guardias |
+| **Enfermero** | Su agenda propia, solicitar licencias y cambios |
+
+#### Filtros disponibles
+
+En la parte superior de la tabla de usuarios encontrás:
+- **Buscar:** búsqueda por nombre de usuario
+- **Filtro por rol:** Admin, Supervisor, Enfermero
+- **Filtro por estado:** Activos, Inactivos, Todos
 
 #### Crear un nuevo usuario
 
@@ -648,12 +656,30 @@ Permite crear, editar y desactivar las cuentas de acceso al sistema.
 3. Seleccioná el **Rol** del usuario.
 4. El **nombre de usuario** se genera automáticamente, pero podés modificarlo.
 5. Ingresá una **contraseña temporal** (mínimo 6 caracteres).
-6. Indicá si el usuario debe cambiar la contraseña al primer login.
+6. Indicá si el usuario debe cambiar la contraseña al primer login (recomendado: activado).
 7. Hacé clic en **"Crear y Enviar Invitación"**.
+
+#### Crear usuarios en forma masiva
+
+El botón **"🤖 Crear usuarios faltantes"** genera automáticamente cuentas de acceso para todos los funcionarios que aún no tienen usuario en el sistema. El proceso:
+- Muestra cuántos funcionarios están sin cuenta antes de ejecutar
+- Asigna contraseña inicial `Clinica2026!` a cada cuenta nueva
+- Activa el flag de cambio de contraseña obligatorio en el primer login
+- Muestra un log en tiempo real con el resultado de cada creación
+
+#### Migrar cuentas Auth
+
+El botón **"🔧 Migrar cuentas"** unifica todos los usuarios de autenticación al dominio interno del sistema (`@guardiapp.app`). Útil cuando existen cuentas con dominios externos (ej: `@mp-enfermeria.com`). No modifica contraseñas ni datos del usuario.
+
+> Se recomienda ejecutar esta migración una sola vez luego de la configuración inicial del sistema, o si se incorporan usuarios con emails de dominios distintos.
 
 #### Editar un usuario existente
 
-En la tabla de usuarios, hacé clic en el ícono de editar de la fila. Solo podés modificar el rol y la vinculación con el funcionario. Los datos personales (teléfono, email, fecha de nacimiento) se toman directamente del registro del funcionario asociado.
+En la tabla de usuarios, hacé clic en el ícono de editar de la fila. Solo podés modificar el rol y la vinculación con el funcionario. El nombre de usuario no puede modificarse una vez creado.
+
+#### Resetear contraseña
+
+En la tabla, hacé clic en el ícono de clave para resetear la contraseña de un usuario. Podés ingresar una nueva contraseña temporal y activar el flag de cambio obligatorio en el próximo login.
 
 ---
 
@@ -661,7 +687,7 @@ En la tabla de usuarios, hacé clic en el ícono de editar de la fila. Solo pod�
 
 **Quién lo ve:** Solo Administrador
 
-Permite gestionar los sectores de la institución (áreas de trabajo).
+Permite gestionar los sectores de la institución (áreas de trabajo). Los sectores son dinámicos: cualquier cambio se refleja inmediatamente en todos los formularios y filtros del sistema.
 
 #### Tabla de sectores
 
@@ -674,7 +700,7 @@ Muestra todos los sectores con su nombre, código y cantidad de funcionarios asi
 3. Ingresá el **código** corto (ej: PM).
 4. Hacé clic en **"Guardar"**.
 
-> El sector nuevo aparecerá inmediatamente en todos los desplegables del sistema (formularios de funcionarios, filtros, etc.).
+> El sector nuevo aparecerá inmediatamente en todos los desplegables del sistema (formularios de funcionarios, filtros, matriz de competencias, etc.).
 
 #### Eliminar un sector
 
@@ -686,25 +712,27 @@ Solo podés eliminar un sector si no tiene funcionarios asignados. Si intentás 
 
 ### Tabla comparativa de permisos
 
-| Funcionalidad | Admin | Supervisora | Enfermera |
-|---------------|:-----:|:-----------:|:---------:|
-| Dashboard | Si | Si | No |
-| Planificación mensual | Si | Si | No |
-| Mi Agenda | Si | Si | Si |
-| Funcionarios | Si | Si | No |
-| Licencias | Si | Si | Solo solicitar |
-| Cambios de Turno | Si (aprobar) | Si (aprobar) | Si (solicitar/aceptar) |
-| Alertas | Si | Si | Solo propias |
-| Generación Auto. | Si | No | No |
-| Notificaciones | Si | Si | No |
-| Reporte RRHH | Si | Si | No |
-| Usuarios y Permisos | Si | No | No |
-| Sectores | Si | No | No |
+| Funcionalidad | Admin | Supervisor | Enfermero |
+|---------------|:-----:|:----------:|:---------:|
+| Dashboard | Sí | Sí | No |
+| Planificación mensual | Sí | Sí | No |
+| Mi Agenda | Sí* | Sí* | Sí |
+| Funcionarios | Sí | Sí | No |
+| Licencias | Sí | Sí | Solo solicitar |
+| Cambios de Turno | Sí (aprobar) | Sí (aprobar) | Sí (solicitar/aceptar) |
+| Alertas | Sí | Sí | Solo propias |
+| Generación Auto. | Sí | No | No |
+| Notificaciones | Sí | Sí | No |
+| Reporte RRHH | Sí | Sí | No |
+| Usuarios y Permisos | Sí | No | No |
+| Sectores | Sí | No | No |
+
+*Solo si tienen un funcionario vinculado a su cuenta de usuario.
 
 ### Pantalla de inicio según rol
 
-- **Admin / Supervisora:** al ingresar, van directamente al **Dashboard**.
-- **Enfermera / Suplente:** al ingresar, van directamente a **Mi Agenda**.
+- **Admin / Supervisor:** al ingresar, van directamente al **Dashboard**.
+- **Enfermero / Suplente:** al ingresar, van directamente a **Mi Agenda**.
 
 ### Rol Administrador / Gerencia
 
@@ -715,8 +743,9 @@ Es el rol con mayor nivel de acceso. Puede:
 - Gestionar sectores
 - Enviar agendas por correo
 - Ver y administrar todo el personal
+- Migrar cuentas de autenticación
 
-### Rol Supervisora
+### Rol Supervisor
 
 Acceso amplio de gestión sin configuración del sistema. Puede:
 - Ver y editar la planilla mensual
@@ -725,7 +754,7 @@ Acceso amplio de gestión sin configuración del sistema. Puede:
 - Ver reportes RRHH completos
 - Enviar notificaciones al personal
 
-### Rol Enfermería
+### Rol Enfermero
 
 Acceso limitado a su información personal. Puede:
 - Ver su propia agenda mensual
@@ -740,40 +769,40 @@ Acceso limitado a su información personal. Puede:
 
 ---
 
-### Ejemplo 1: Cómo solicitar un cambio de turno (Enfermera)
+### Ejemplo 1: Cómo solicitar un cambio de turno (Enfermero)
 
-**Situación:** Necesitás cambiar tu turno del martes 15 con una compañera.
+**Situación:** Necesitás cambiar tu turno del martes 15 con otro funcionario.
 
 1. Ingresá al sistema y entrá a **Mi Agenda**.
-2. Hacé clic en el botón **"+ Cambio de Turno"** (o en el día de tu turno en el calendario).
+2. Hacé clic en el día de tu turno en el calendario para iniciar la solicitud.
 3. En el formulario **"Solicitud de Cambio"**:
    - En **"MI TURNO (a ceder)"**: la fecha y código de tu turno ya estarán precargados. Verificalos.
    - En **"INTERCAMBIO CON"**: el sistema mostrará compañeros disponibles con turnos compatibles. Hacé clic en la persona con quien querés intercambiar.
-   - En **"Turno a recibir"**: indicá la fecha y código del turno de tu compañera que vas a tomar.
+   - En **"Turno a recibir"**: indicá la fecha y código del turno que vas a tomar.
    - En **"Motivo"**: explicá brevemente el motivo (opcional pero recomendado).
 4. Hacé clic en **"Enviar Solicitud"**.
-5. El sistema notifica a tu compañera. Cuando ella acepte, pasa a supervisión para aprobación final.
+5. El sistema notifica a la otra persona. Cuando acepte, pasa a supervisor para aprobación final.
 6. Podés seguir el estado en **Mi Agenda** → sección "Mis Cambios de Turno".
 
 ---
 
-### Ejemplo 2: Cómo cargar una licencia (Supervisora / Admin)
+### Ejemplo 2: Cómo cargar una licencia (Supervisor / Admin)
 
-**Situación:** Una funcionaria tiene certificado médico del 10 al 14 de abril.
+**Situación:** Un funcionario tiene certificado médico del 10 al 14 de abril.
 
 1. Ir a **Licencias** → pestaña **"Nueva Licencia"**.
-2. En **Funcionario**: escribí el apellido de la funcionaria y seleccionala de la lista.
+2. En **Funcionario**: escribí el apellido y seleccionalo de la lista.
 3. En **Tipo**: seleccioná **CERT — Certificación**.
 4. En **Desde**: 10/04/2026. En **Hasta**: 14/04/2026.
 5. El sistema verificará que no hay superposición con otra licencia existente.
 6. Como CERT genera vacante, aparece la sección de suplente. Elegí el suplente disponible o dejá "Sin asignar por ahora".
 7. Agregá observaciones si necesitás (ej: "Certificado Dr. Rodríguez").
 8. Hacé clic en **"Guardar y Notificar"**.
-9. La licencia queda registrada y los turnos de la funcionaria se actualizan automáticamente en la planilla.
+9. La licencia queda registrada y los turnos del funcionario se actualizan automáticamente en la planilla.
 
 ---
 
-### Ejemplo 3: Cómo revisar y gestionar alertas (Supervisora / Admin)
+### Ejemplo 3: Cómo revisar y gestionar alertas (Supervisor / Admin)
 
 **Situación:** Hay alertas pendientes en el sistema.
 
@@ -806,19 +835,19 @@ Acceso limitado a su información personal. Puede:
 
 ---
 
-### Ejemplo 5: Cómo aceptar o rechazar un cambio propuesto (Enfermera)
+### Ejemplo 5: Cómo aceptar o rechazar un cambio propuesto (Enfermero)
 
-**Situación:** Una compañera te propone un cambio de turno.
+**Situación:** Un compañero te propone un cambio de turno.
 
 1. Verás el número en el menú de **Cambios de Turno** o una alerta en tus **Alertas**.
-2. Ir a **Mi Agenda** → sección "Mis Cambios de Turno" → subsección "Recibidos".
-3. Verás la propuesta con el detalle: quién te lo pide, qué turno cedeés y qué turno recibís.
-4. Si aceptás: hacé clic en **"Aceptar"**. La solicitud pasa a la supervisora para aprobación final.
+2. Ir a **Mi Agenda** → sección "Mis Cambios de Turno".
+3. Verás la propuesta con el detalle: quién te lo pide, qué turno cedés y qué turno recibís.
+4. Si aceptás: hacé clic en **"Aceptar"**. La solicitud pasa al supervisor para aprobación final.
 5. Si no podés o no querés: hacé clic en **"Rechazar"**. El solicitante será notificado automáticamente.
 
 ---
 
-### Ejemplo 6: Cómo consultar el reporte RRHH de un mes (Supervisora / Admin)
+### Ejemplo 6: Cómo consultar el reporte RRHH de un mes (Supervisor / Admin)
 
 **Situación:** Necesitás verificar el cumplimiento de guardia del mes de marzo.
 
@@ -828,6 +857,19 @@ Acceso limitado a su información personal. Puede:
 4. En la pestaña **"Resumen por Clínica"** verás el detalle completo por funcionario.
 5. Para ver el detalle de una persona: ir a la pestaña **"Detalle Día a Día"** y seleccionarla en el filtro.
 6. Para exportar: hacé clic en **"Descargar Excel RRHH"** o usá **Ctrl+P** para guardar como PDF.
+
+---
+
+### Ejemplo 7: Cómo crear usuarios masivamente (Admin)
+
+**Situación:** Se incorporaron 20 nuevos funcionarios y necesitás darles acceso al sistema.
+
+1. Ir a **Usuarios y Permisos**.
+2. Hacé clic en **"🤖 Crear usuarios faltantes"**.
+3. El sistema muestra cuántos funcionarios no tienen cuenta todavía.
+4. Confirmá la operación.
+5. Observá el log en tiempo real: cada línea muestra si la cuenta fue creada (✓), ya existía (↗) o hubo un error (✗).
+6. Al finalizar, todos los nuevos usuarios podrán ingresar con su nombre de usuario y la contraseña inicial `Clinica2026!`. Se les pedirá cambiarla en el primer login.
 
 ---
 
@@ -862,7 +904,7 @@ Acceso limitado a su información personal. Puede:
 | Código | Nombre | Descripción |
 |--------|--------|-------------|
 | LAR | Licencia Anual Reglamentaria | Vacaciones anuales |
-| MAT | Maternal | Licencia por maternidad |
+| MAT | Maternal | Licencia por maternidad/paternidad |
 | CERT | Certificación | Certificado médico o capacitación |
 | LE | Libre Especial | Licencia especial acordada |
 | F | Falta | Ausencia imprevista |
@@ -888,6 +930,7 @@ Acceso limitado a su información personal. Puede:
 - **Asigná siempre un suplente** cuando la licencia genera vacante. Una vacante sin cubrir genera una alerta que persiste hasta resolverse.
 - **Revisá las alertas del Dashboard** al comenzar cada jornada. Las alertas de 7ª guardia requieren acción inmediata.
 - **Aprobá la planilla antes de enviarla.** Las planillas en estado "borrador" no están disponibles en Notificaciones.
+- **Completá la matriz de Competencias** para todos los funcionarios. Esto permite que el sistema sugiera el suplente más adecuado con prioridad automática.
 
 ### Orden recomendado de trabajo mensual (para Administración)
 
@@ -907,6 +950,7 @@ Acceso limitado a su información personal. Puede:
 | Enviar agenda antes de aprobar la planilla | Aprobá siempre el borrador antes de ir a Notificaciones |
 | Crear suplente sin asignar competencias | Completá la matriz de Competencias en Funcionarios para mejorar las sugerencias automáticas |
 | Modificar turnos sin verificar el impacto | Revisá el reporte RRHH después de cambios masivos en la planilla |
+| Funcionario de gestión con turnos en planilla | Desvinculá el funcionario del usuario y desactivalo si no es parte de la rotación |
 
 ---
 
@@ -919,7 +963,7 @@ Verificá que el nombre de usuario y la contraseña sean correctos (las mayúscu
 El sistema carga los datos al iniciar sesión. Esto puede tardar unos segundos. Si persiste el problema, verificá tu conexión a internet y recargá la página.
 
 **¿Por qué no veo el Dashboard ni la Planificación?**
-Esas secciones son exclusivas de los roles Administrador y Supervisora. Si sos enfermera o suplente, tu pantalla de inicio es Mi Agenda.
+Esas secciones son exclusivas de los roles Administrador y Supervisor. Si sos enfermero o suplente, tu pantalla de inicio es Mi Agenda.
 
 **¿Por qué el Dashboard muestra "Sin planificación generada"?**
 La planilla del mes seleccionado aún no fue generada o aprobada. El Administrador debe generarla desde "Generación Auto." y luego aprobarla.
@@ -928,7 +972,7 @@ La planilla del mes seleccionado aún no fue generada o aprobada. El Administrad
 Puede ser que no haya datos de turnos para ese mes. Verificá que la planilla esté generada y aprobada para el período seleccionado.
 
 **¿Por qué no puedo editar los datos de un funcionario?**
-Solo los roles Administrador y Supervisora pueden editar funcionarios. Si tenés ese rol y aún así no podés, verificá si el funcionario está marcado como inactivo.
+Solo los roles Administrador y Supervisor pueden editar funcionarios. Si tenés ese rol y aún así no podés, verificá si el funcionario está marcado como inactivo.
 
 **¿Puedo cancelar una licencia ya cargada?**
 Sí, pero deberás hacerlo desde la tabla de Licencias. Consultá con administración si implica ajustes en la planilla o en la cobertura asignada.
@@ -937,7 +981,7 @@ Sí, pero deberás hacerlo desde la tabla de Licencias. Consultá con administra
 El sistema crea una alerta visible en el Dashboard y en Alertas. El funcionario genera horas extra que quedan registradas en el reporte RRHH del mes.
 
 **¿Por qué mi solicitud de cambio de turno sigue en "Pendiente"?**
-La otra persona todavía no aceptó tu propuesta. Una vez que acepte, pasa a la supervisora. Podés ver el estado actualizado en Mi Agenda → "Mis Cambios de Turno".
+La otra persona todavía no aceptó tu propuesta. Una vez que acepte, pasa al supervisor. Podés ver el estado actualizado en Mi Agenda → "Mis Cambios de Turno".
 
 **¿Puedo tener más de una solicitud de cambio activa a la vez?**
 El sistema evita solicitudes duplicadas (mismo funcionario, misma fecha, mismo turno). Podés tener solicitudes simultáneas para días diferentes.
@@ -950,6 +994,9 @@ Podés verificarlo en Notificaciones → sección "Historial de notificaciones".
 
 **¿Por qué no aparece un suplente en la lista de disponibles?**
 Puede ser que el suplente esté marcado como inactivo o que ya tenga una asignación en las mismas fechas que generaría superposición.
+
+**¿Por qué mi agenda muestra turnos de otra persona?**
+Verificá con administración que tu usuario esté vinculado al funcionario correcto. Un usuario con funcionario mal vinculado mostrará la agenda del funcionario erróneo.
 
 ---
 
@@ -967,7 +1014,7 @@ Puede ser que el suplente esté marcado como inactivo o que ya tenga una asignac
 Para problemas que no podés resolver por tu cuenta:
 
 - **Problemas de acceso o contraseña:** contactá al Administrador del sistema de tu institución.
-- **Datos incorrectos en la planilla:** informale a tu supervisora o al área de administración.
+- **Datos incorrectos en la planilla:** informale a tu supervisor o al área de administración.
 - **Errores del sistema (pantalla en blanco, mensajes de error inesperados):** comunicalo al responsable técnico del sistema en tu institución.
 
 ### Información a tener lista al reportar un problema
@@ -989,24 +1036,25 @@ Al reportar un problema, tené a mano:
 
 **OBS-01 — Cobertura Pendiente vs. Sin cubrir**
 La pestaña "Cobertura Pendiente" dentro de Licencias y el filtro "Sin cubrir" muestran información similar. La pestaña Cobertura Pendiente agrupa por sector y es más completa; el filtro "Sin cubrir" en la primera pestaña es más rápido para acceder.
-*Sugerencia: clarificar en la interfaz qué diferencia existe entre ambas opciones.*
 
 **OBS-02 — Generación y Planificación son pasos de un mismo proceso**
-La sección Generación Auto. crea la planilla, y la sección Planificación es donde se visualiza y edita. Puede no ser inmediatamente claro que son dos etapas complementarias.
-*Sugerencia: agregar un indicador o enlace directo desde Generación hacia la vista de Planificación.*
+La sección Generación Auto. crea la planilla, y la sección Planificación es donde se visualiza y edita. Son dos etapas complementarias: primero se genera, luego se revisa y edita en Planificación.
 
 **OBS-03 — El estado "Pendiente" en licencias tiene dos significados**
 Una licencia puede estar en estado "Pendiente" porque no tiene suplente asignado, o porque fue creada recientemente y aún no está activa. El contexto (fecha de inicio) ayuda a distinguirlos.
-*Sugerencia: diferenciar visualmente "Pendiente de cobertura" de "Pendiente de inicio".*
 
-**OBS-04 — La aprobación de supervisora en cambios de turno es obligatoria**
-Aunque el receptor acepte el cambio, este no se aplica en la planilla hasta que la supervisora lo aprueba. Algunos usuarios esperan que la aceptación del receptor sea suficiente.
-*Sugerencia: incluir un mensaje más explícito en la confirmación de aceptación.*
+**OBS-04 — La aprobación de supervisor en cambios de turno es obligatoria**
+Aunque el receptor acepte el cambio, este no se aplica en la planilla hasta que el supervisor lo aprueba. La aceptación del receptor es solo el primer paso del flujo.
 
 **OBS-05 — Exportación a PDF desde Reporte RRHH**
-La opción de PDF no tiene un botón dedicado — se realiza usando la función de impresión del navegador (Ctrl+P → "Guardar como PDF"). Esto puede resultar poco intuitivo para usuarios no técnicos.
-*Sugerencia: agregar un botón "Exportar PDF" que automatice este proceso.*
+La opción de PDF no tiene un botón dedicado — se realiza usando la función de impresión del navegador (Ctrl+P → "Guardar como PDF").
+
+**OBS-06 — Sectores dinámicos**
+Los sectores se cargan desde la base de datos al iniciar sesión. Si se crea un sector nuevo y no aparece en algún desplegable, recargá la página para actualizar los datos.
+
+**OBS-07 — Mi Agenda para roles de gestión**
+Los usuarios con rol Administrador o Supervisor solo verán contenido en "Mi Agenda" si tienen un funcionario vinculado a su cuenta y ese funcionario tiene turnos en la planilla. Si el perfil es exclusivamente de gestión (sin vínculo a un funcionario), la sección mostrará que no hay turnos asignados.
 
 ---
 
-*Este manual fue generado a partir del análisis del código fuente de GuardiaApp versión 13.3.*
+*Este manual fue generado a partir del análisis del código fuente de GuardiaApp versión 13.3 — Actualizado Marzo 2026.*
