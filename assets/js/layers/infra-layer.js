@@ -35,7 +35,7 @@ async function loadDB(){
     const yearTo   = `${new Date().getFullYear()+1}-12-31`;
     const [fRes, lRes, cRes, aRes, uRes, phRes, secRes, genRes, codRes, turnosData, motRes, cliRes] = await Promise.all([
       sb.from('funcionarios').select('*, clinica:clinicas(nombre,codigo), sector:sectores(nombre,codigo)').order('apellido'),
-      sb.from('licencias').select('id, funcionario_id, suplente_id, tipo, fecha_desde, fecha_hasta, dias, genera_vacante, estado, observaciones, motivo_id, funcionario:funcionario_id(id,apellido,nombre,telefono,fecha_nacimiento,sector:sector_id(nombre)), suplente:suplente_id(apellido,nombre)').in('estado',["activa","pendiente"]),
+      sb.from('licencias').select('id, funcionario_id, suplente_id, tipo, fecha_desde, fecha_hasta, dias, genera_vacante, estado, observaciones, motivo_id, funcionario:funcionario_id(id,apellido,nombre,telefono,fecha_nacimiento,sector:sector_id(nombre),clinica:clinica_id(nombre)), suplente:suplente_id(apellido,nombre)').in('estado',["activa","pendiente"]),
       sb.from('cambios').select('id, solicitante_id, receptor_id, turno_cede, fecha_cede, turno_recibe, fecha_recibe, estado, created_at, solicitante:solicitante_id(apellido,nombre), receptor:receptor_id(apellido,nombre)').order('created_at',{ascending:false}),
       sb.from('alertas').select('*').eq('leida',false).order('created_at',{ascending:false}).limit(100),
       sb.from('usuarios').select('id, email, rol, activo, must_change_password, auth_user_id, funcionario_id, funcionario:funcionario_id(id,apellido,nombre,email,sector:sector_id(nombre),clinica:clinica_id(nombre))'),

@@ -1718,22 +1718,15 @@ function renderCobertura(){
     l.fecha_desde <= mesTo
   );
   if(COB_FIL.cliId!=='all') pending=pending.filter(l=>
-    l.funcionario?.clinica?.id===COB_FIL.cliId || l.funcionario?.clinica_id===COB_FIL.cliId);
+    (l.funcionario?.clinica?.nombre||l.funcionario?.clinicaNombre)===COB_FIL.cliId);
   if(COB_FIL.secId!=='all') pending=pending.filter(l=>
-    l.funcionario?.sector?.id===COB_FIL.secId);
+    l.funcionario?.sector?.nombre===COB_FIL.secId);
 
-  // ── Clínica / Sector options — derived from all funcionarios ──────────────
-  const cliMap=new Map(), secMap=new Map();
-  [...DB.funcionarios,...DB.suplentes,...(DB.licencias.map(l=>l.funcionario).filter(Boolean))].forEach(f=>{
-    if(f.clinica?.nombre) cliMap.set(f.clinica_id||f.clinica.nombre, f.clinica.nombre);
-    if(f.sector?.nombre)  secMap.set(f.sector_id ||f.sector.nombre,  f.sector.nombre);
-  });
+  // ── Clínica / Sector options — from DB.clinicas / DB.sectores (deduplicados) ──
   const cliOpts='<option value="all">Todas las clínicas</option>'+
-    [...cliMap.entries()].sort((a,b)=>a[1].localeCompare(b[1]))
-      .map(([id,nm])=>`<option value="${id}"${id===COB_FIL.cliId?' selected':''}>${nm}</option>`).join('');
+    (DB.clinicas||[]).map(c=>`<option value="${c.nombre}"${c.nombre===COB_FIL.cliId?' selected':''}>${c.nombre}</option>`).join('');
   const secOpts='<option value="all">Todos los sectores</option>'+
-    [...secMap.entries()].sort((a,b)=>a[1].localeCompare(b[1]))
-      .map(([id,nm])=>`<option value="${id}"${id===COB_FIL.secId?' selected':''}>${nm}</option>`).join('');
+    (DB.sectores||[]).map(s=>`<option value="${s.nombre}"${s.nombre===COB_FIL.secId?' selected':''}>${s.nombre}</option>`).join('');
 
   // ── Build agenda: group licencias by "anchor day" in selected month ───────
   // Anchor = max(fecha_desde, mesFrom) — so ongoing licencias appear from day 1
