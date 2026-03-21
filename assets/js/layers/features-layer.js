@@ -1898,6 +1898,20 @@ function chkVac(){
         subs.map((s,i)=>{const nm=s.apellido?`${s.apellido}, ${s.nombre}`:s.name;const pct=s.pct||80;return `<option value="${nm}">${nm} (${i+1}° · ${pct}%)</option>`;}).join('');
     }
   }
+  // Motivo row: only visible for Libre Especial
+  const mr=document.getElementById('licMotivoRow');
+  if(mr){
+    const isLE = t==='LE';
+    mr.style.display=isLE?'block':'none';
+    if(isLE){
+      const mSel=document.getElementById('licMotivo');
+      if(mSel){
+        const motivos=(DB.motivosLicencia||[]).filter(m=>m.activo!==false);
+        mSel.innerHTML='<option value="">Sin especificar</option>'+
+          motivos.map(m=>`<option value="${m.id}">${m.descripcion}</option>`).join('');
+      }
+    }
+  }
 }
 function chkV(){
   const c=document.getElementById('smCode')?.value;
@@ -3918,11 +3932,13 @@ async function saveLic(){
       return;
     }
     const selSub=[...DB.suplentes,...DB.funcionarios].find(f=>fNombre(f)===subSel);
+    const motivoId = tipo==='LE' ? (document.getElementById('licMotivo')?.value||null) : null;
     const payload={
       funcionario_id:emp?.id||1,
       suplente_id: genVac && selSub?.id ? selSub.id : null,
       tipo, fecha_desde:desde, fecha_hasta:hasta, dias:days,
       genera_vacante:genVac, observaciones:obs,
+      motivo_id: motivoId||null,
       estado: genVac && !selSub?.id ? 'pendiente' : 'activa'
     };
     const res = await saveLicencia(payload);
@@ -5437,6 +5453,68 @@ async function deleteSector(id, nombre){
   DB.sectores = (DB.sectores||[]).filter(s=>s.id!==id);
   populateSels();
   renderSectors();
+}
+
+// ........................................................
+// MOTIVOS DE LICENCIA ESPECIAL CRUD
+// ........................................................
+function renderMotivos(){
+  if(!dbLoaded){ document.getElementById('motivosBody').innerHTML='<tr><td colspan="3" style="color:var(--t3);padding:20px;text-align:center">Cargando...</td></tr>'; return; }
+  const all = DB.motivosLicencia||[];
+  const rows = all.map(m=>`<tr>
+    <td><strong>${m.descripcion}</strong></td>
+    <td><span style="font-size:10px;padding:2px 7px;border-radius:10px;background:${m.activo!==false?'var(--gdim)':'var(--rdim)'};color:${m.activo!==false?'var(--green)':'var(--red)'}">${m.activo!==false?'Activo':'Inactivo'}</span></td>
+    <td style="text-align:right;white-space:nowrap">
+      <button class="btn bg sm" onclick="openMotivoModal('${m.id}')">✏️ Editar</button>
+      <button class="btn sm" style="color:var(--red)" onclick="deleteMotivo('${m.id}','${m.descripcion.replace(/'/g,"\\'")}')">🗑</button>
+    </td>
+  </tr>`).join('') || '<tr><td colspan="3" style="color:var(--t3);padding:20px;text-align:center">No hay motivos cargados</td></tr>';
+  document.getElementById('motivosBody').innerHTML = rows;
+}
+
+function openMotivoModal(id){
+  document.getElementById('sMotivoId').value = id||'';
+  if(id){
+    const m = (DB.motivosLicencia||[]).find(x=>x.id===id);
+    document.getElementById('motivoMTitle').textContent = '📋 Editar Motivo';
+    document.getElementById('sMotivoDesc').value = m?.descripcion||'';
+    document.getElementById('sMotivoActivo').value = m?.activo!==false ? '1' : '0';
+  } else {
+    document.getElementById('motivoMTitle').textContent = '📋 Nuevo Motivo';
+    document.getElementById('sMotivoDesc').value = '';
+    document.getElementById('sMotivoActivo').value = '1';
+  }
+  openM('motivoM');
+}
+
+async function saveMotivo(){
+  if(!sb){ toast('er','Sin conexión','Supabase no iniciado'); return; }
+  const id = document.getElementById('sMotivoId').value||null;
+  const descripcion = document.getElementById('sMotivoDesc').value.trim();
+  const activo = document.getElementById('sMotivoActivo').value === '1';
+  if(!descripcion){ toast('wa','Descripción requerida','Ingresá la descripción del motivo'); return; }
+  let error;
+  if(id){
+    ({error} = await sb.from('motivos_licencia').update({descripcion,activo}).eq('id',id));
+  } else {
+    ({error} = await sb.from('motivos_licencia').insert({descripcion,activo}));
+  }
+  if(error){ toast('er','Error guardando motivo',error.message); return; }
+  toast('ok', id?'Motivo actualizado':'Motivo creado', descripcion);
+  closeM('motivoM');
+  const {data} = await sb.from('motivos_licencia').select('id,descripcion,activo').order('descripcion');
+  if(data) DB.motivosLicencia = data;
+  renderMotivos();
+}
+
+async function deleteMotivo(id, descripcion){
+  if(!sb){ toast('er','Sin conexión','Supabase no iniciado'); return; }
+  if(!(await new Promise(r => appConfirm('Eliminar motivo', `¿Eliminar el motivo "${descripcion}"?`, r, 'Eliminar')))) return;
+  const {error} = await sb.from('motivos_licencia').delete().eq('id',id);
+  if(error){ toast('er','Error eliminando motivo',error.message); return; }
+  toast('ok','Motivo eliminado',descripcion);
+  DB.motivosLicencia = (DB.motivosLicencia||[]).filter(m=>m.id!==id);
+  renderMotivos();
 }
 
 // ........................................................

@@ -212,6 +212,7 @@
         </div>
         <div id="licEmpInfo" style="display:none;background:var(--bg3);border:1px solid var(--b);border-radius:var(--r);padding:10px;margin-bottom:12px;font-size:11px;color:var(--t2)"></div>
         <div class="fg"><label>Tipo</label><select id="licType" onchange="chkVac();checkLicOverlapPreview()"><option value="LAR">LAR — Licencia Anual Reglamentaria</option><option value="MAT">Maternal</option><option value="CERT">Certificación</option><option value="LE">Libre Especial</option><option value="F">Falta Imprevista</option><option value="DXF">Día por Feriado</option><option value="CPL">Cumpleaños (½ guardia)</option></select></div>
+        <div id="licMotivoRow" style="display:none"><div class="fg"><label>Motivo</label><select id="licMotivo"><option value="">Sin especificar</option></select></div></div>
         <div class="fr"><div class="fg"><label>Desde</label><input id="licDesde" type="date" onchange="checkLicOverlapPreview()"></div><div class="fg"><label>Hasta</label><input id="licHasta" type="date" onchange="checkLicOverlapPreview()"></div></div>
         <div id="licOverlapWarn" style="display:none;background:var(--adim);border:1px solid rgba(245,166,35,.3);border-radius:var(--r);padding:10px;margin-bottom:12px;font-size:11px;color:var(--amber)"></div>
         <div id="vacBox" style="display:none;background:var(--rdim);border:1px solid rgba(255,77,77,.3);border-radius:var(--r);padding:12px;margin-bottom:12px">
@@ -414,6 +415,17 @@
     <button class="btn bp sm" onclick="openSectorModal()">＋ Nuevo Sector</button>
   </div>
   <div class="tw"><table><thead><tr><th>Nombre</th><th>Código</th><th>Funcionarios</th><th></th></tr></thead><tbody id="sectorsBody"></tbody></table></div>
+
+  <div style="margin-top:28px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--text)">Motivos de Licencia Especial</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:2px">Motivos disponibles al cargar una Licencia de tipo Libre Especial.</div>
+      </div>
+      <button class="btn bp sm" onclick="openMotivoModal()">＋ Nuevo Motivo</button>
+    </div>
+    <div class="tw"><table><thead><tr><th>Descripción</th><th>Estado</th><th></th></tr></thead><tbody id="motivosBody"></tbody></table></div>
+  </div>
 </div>
 
 <!-- NOTIFICATIONS -->
@@ -444,6 +456,16 @@
     <div class="fg"><label>Código</label><input id="sSectorCodigo" type="text" placeholder="ej: PM" style="text-transform:uppercase"></div>
   </div>
   <div class="mf"><button class="btn bg" onclick="closeM('sectorM')">Cancelar</button><button class="btn bp" onclick="saveSector()">💾 Guardar</button></div>
+</div></div>
+
+<div class="ov" id="motivoM"><div class="modal" style="max-width:380px">
+  <div class="mh"><div class="mh-t" id="motivoMTitle">📋 Nuevo Motivo</div><button class="mh-x" onclick="closeM('motivoM')">✕</button></div>
+  <div class="mb">
+    <input type="hidden" id="sMotivoId">
+    <div class="fg"><label>Descripción</label><input id="sMotivoDesc" type="text" placeholder="ej: Examen universitario"></div>
+    <div class="fg"><label>Estado</label><select id="sMotivoActivo"><option value="1">Activo</option><option value="0">Inactivo</option></select></div>
+  </div>
+  <div class="mf"><button class="btn bg" onclick="closeM('motivoM')">Cancelar</button><button class="btn bp" onclick="saveMotivo()">💾 Guardar</button></div>
 </div></div>
 
 <div class="ov" id="shiftM"><div class="modal">
@@ -638,9 +660,9 @@
 <div class="tbox" id="tbox"></div>
 
 <script src="assets/js/layers/contracts-layer.js?v=20260320e"></script>
-<script src="assets/js/layers/core-layer.js?v=20260321c"></script>
-<script src="assets/js/layers/features-layer.js?v=20260321c"></script>
-<script src="assets/js/layers/infra-layer.js?v=20260321c"></script>
+<script src="assets/js/layers/core-layer.js?v=20260321d"></script>
+<script src="assets/js/layers/features-layer.js?v=20260321d"></script>
+<script src="assets/js/layers/infra-layer.js?v=20260321d"></script>
 <script src="assets/js/layers/bootstrap-layer.js?v=20260320e"></script>
 </body>
 </html>

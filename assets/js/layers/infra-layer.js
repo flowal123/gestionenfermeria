@@ -33,9 +33,9 @@ async function loadDB(){
   try {
     const yearFrom = `${new Date().getFullYear()}-01-01`;
     const yearTo   = `${new Date().getFullYear()+1}-12-31`;
-    const [fRes, lRes, cRes, aRes, uRes, phRes, secRes, genRes, codRes, turnosData] = await Promise.all([
+    const [fRes, lRes, cRes, aRes, uRes, phRes, secRes, genRes, codRes, turnosData, motRes] = await Promise.all([
       sb.from('funcionarios').select('*, clinica:clinicas(nombre,codigo), sector:sectores(nombre,codigo)').order('apellido'),
-      sb.from('licencias').select('id, funcionario_id, suplente_id, tipo, fecha_desde, fecha_hasta, dias, genera_vacante, estado, observaciones, funcionario:funcionario_id(id,apellido,nombre,telefono,fecha_nacimiento,sector:sector_id(nombre)), suplente:suplente_id(apellido,nombre)').in('estado',["activa","pendiente"]),
+      sb.from('licencias').select('id, funcionario_id, suplente_id, tipo, fecha_desde, fecha_hasta, dias, genera_vacante, estado, observaciones, motivo_id, funcionario:funcionario_id(id,apellido,nombre,telefono,fecha_nacimiento,sector:sector_id(nombre)), suplente:suplente_id(apellido,nombre)').in('estado',["activa","pendiente"]),
       sb.from('cambios').select('id, solicitante_id, receptor_id, turno_cede, fecha_cede, turno_recibe, fecha_recibe, estado, created_at, solicitante:solicitante_id(apellido,nombre), receptor:receptor_id(apellido,nombre)').order('created_at',{ascending:false}),
       sb.from('alertas').select('*').eq('leida',false).order('created_at',{ascending:false}).limit(100),
       sb.from('usuarios').select('id, email, rol, activo, must_change_password, auth_user_id, funcionario_id, funcionario:funcionario_id(id,apellido,nombre,email,sector:sector_id(nombre),clinica:clinica_id(nombre))'),
@@ -44,6 +44,7 @@ async function loadDB(){
       sb.from('generaciones').select('*').order('created_at',{ascending:false}),
       sb.from('codigos_turno').select('codigo,descripcion,es_laboral,color').order('codigo'),
       _loadTurnosPaginado(yearFrom, yearTo),
+      sb.from('motivos_licencia').select('id,descripcion,activo').order('descripcion'),
     ]);
     if(fRes.error) throw fRes.error;
     if(lRes.error) console.error('Error cargando licencias');
@@ -53,6 +54,7 @@ async function loadDB(){
     if(secRes.error) console.warn('sectores no disponible');
     if(genRes.error) console.warn('generaciones no disponible');
     if(codRes.error) console.warn('codigos_turno no disponible — usando fallback');
+    if(motRes?.error) console.warn('motivos_licencia no disponible');
     DB.sectores         = secRes.data||[];
     DB.generaciones     = genRes.data||[];
     DB.funcionariosAll  = (fRes.data||[]).filter(f=>f.tipo==='fijo');
@@ -69,6 +71,7 @@ async function loadDB(){
     DB.usuarios         = uRes.data||[];
     DB.patronHistorico  = phRes.data||[];
     DB.codigosTurno     = codRes.data||[];
+    DB.motivosLicencia  = motRes?.data||[];
     // Reconstruir WK_CODES desde BD si la tabla existe y tiene datos
     if(DB.codigosTurno.length){
       WK_CODES = new Set(DB.codigosTurno.filter(c=>c.es_laboral).map(c=>c.codigo.toUpperCase()));
@@ -198,7 +201,7 @@ async function saveLicencia(data){
   // Some schemas compute `dias` as generated column; avoid sending it in INSERT.
   const payload = {...data};
   if(Object.prototype.hasOwnProperty.call(payload,'dias')) delete payload.dias;
-  const {data:res, error} = await sb.from('licencias').insert(payload).select('id, funcionario_id, suplente_id, tipo, fecha_desde, fecha_hasta, dias, genera_vacante, estado, observaciones, funcionario:funcionario_id(apellido,nombre,sector:sector_id(nombre)), suplente:suplente_id(apellido,nombre)').single();
+  const {data:res, error} = await sb.from('licencias').insert(payload).select('id, funcionario_id, suplente_id, tipo, fecha_desde, fecha_hasta, dias, genera_vacante, estado, observaciones, motivo_id, funcionario:funcionario_id(apellido,nombre,sector:sector_id(nombre)), suplente:suplente_id(apellido,nombre)').single();
   if(error){ toast('er','Error al guardar licencia', error.message); console.error(error); return null; }
   DB.licencias.push(res);
   // Also push to LIC_DATA for immediate renderLics refresh (all roles)

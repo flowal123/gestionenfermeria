@@ -302,7 +302,7 @@ function go(id){
   if(id==='notifications') renderNotifications();
   if(id==='hrReport')    renderHR();
   if(id==='users')       renderUsers();
-  if(id==='sectors')     renderSectors();
+  if(id==='sectors')     { renderSectors(); renderMotivos(); }
   populateSels();
 }
 
