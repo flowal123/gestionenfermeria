@@ -68,6 +68,8 @@ END $$;
 CREATE POLICY "sectores_select_auth" ON sectores
   FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "motivos_select_auth"   ON motivos_licencia;
+DROP POLICY IF EXISTS "motivos_read_all"      ON motivos_licencia;
 CREATE POLICY "motivos_select_auth" ON motivos_licencia
   FOR SELECT TO authenticated USING (true);
 
